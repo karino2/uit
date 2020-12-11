@@ -155,6 +155,120 @@ let mfToText mf =
 mfToText mf
 
 
+let ensureDir (di: DirectoryInfo) =
+    if not di.Exists then
+        Directory.CreateDirectory di.FullName |> ignore
+    
+
+let rawSaveTo (fi: FileInfo) text =
+    ensureDir fi.Directory
+    File.WriteAllText("temp.dat", text)
+    File.Move("temp.dat", fi.FullName)
+
+
+let saveText ospath text =
+    let (OSPath path) = ospath
+    rawSaveTo (FileInfo path) text
+
+let toRawFileInfo repo upath =
+    let (OSPath path) =  toOSPath repo upath
+    FileInfo path
+
+
+let dest = hashPath mf.Hash
+
+
+saveText (toOSPath repo dest) (mfToText mf)
+
+type InstanceOrReference =
+| Instance of PathEntry
+| Reference of PathEntry
+
+
+
+let toBlobInfo repo hash =
+    let dir = hashPath hash
+    let fi = toRawFileInfo repo dir
+    let toPE (cells : string array) =
+        {Path=(UPath cells.[2]); LastModified=DateTime(Int64.Parse cells.[0]); EntryDate=DateTime(Int64.Parse cells.[1])}
+    let toIoR (line: string) =
+        let cells = line.Split('\t')
+        let tp = cells.[0]
+        match tp with
+        | "1" -> Instance (toPE cells.[1..])
+        | "2" -> Reference (toPE cells.[1..])
+        | _ -> failwith "invalid data"
+    if fi.Exists then
+        let onlyIorR icase rcase =
+            fun m ->
+                match m with
+                |Instance _-> icase
+                |Reference _ -> rcase
+        let inside ior =
+            match ior with
+            | Instance entry -> entry
+            | Reference entry -> entry
+
+        let ret = 
+            File.ReadLines fi.FullName
+            |> Seq.map toIoR
+
+        let is = ret |> Seq.filter (onlyIorR true false) |> Seq.map inside |> Seq.toList
+        let rs = ret |> Seq.filter (onlyIorR false true) |> Seq.map inside |> Seq.toList
+        ManagedFile { Hash = hash; InstancePathList=is; ReferencePathList=rs }
+    else
+        UnmanagedFile
+
+toBlobInfo repo h
+
+
+(*
+> toBlobInfo repo h;;
+val it : BlobInfo =
+  ManagedFile
+    { Hash =
+            Hash
+              [|254uy; 80uy; 119uy; 45uy; 58uy; 155uy; 121uy; 6uy; 223uy; 27uy;
+                167uy; 189uy; 75uy; 223uy; 52uy; 220uy; 98uy; 114uy; 214uy;
+                109uy; 91uy; 219uy; 217uy; 16uy; 152uy; 153uy; 1uy; 225uy;
+                60uy; 51uy; 26uy; 36uy|]
+      InstancePathList =
+                        [{ Path = UPath "Uit.fsx"
+                           LastModified =
+                                         2020/12/11 23:28:06
+                                           {Date = 2020/12/11 0:00:00;
+                                            Day = 11;
+                                            DayOfWeek = Friday;
+                                            DayOfYear = 346;
+                                            Hour = 23;
+                                            Kind = Unspecified;
+                                            Millisecond = 655;
+                                            Minute = 28;
+                                            Month = 12;
+                                            Second = 6;
+                                            Ticks = 637433260866558117L;
+                                            TimeOfDay = 23:28:06.6558117;
+                                            Year = 2020;}
+                           EntryDate =
+                                      2020/12/11 23:34:30
+                                        {Date = 2020/12/11 0:00:00;
+                                         Day = 11;
+                                         DayOfWeek = Friday;
+                                         DayOfYear = 346;
+                                         Hour = 23;
+                                         Kind = Unspecified;
+                                         Millisecond = 499;
+                                         Minute = 34;
+                                         Month = 12;
+                                         Second = 30;
+                                         Ticks = 637433264704990800L;
+                                         TimeOfDay = 23:34:30.4990800;
+                                         Year = 2020;} }]
+      ReferencePathList = [] }*)
+
+mfToText mf
+
+Int64.Parse("637433260866558117")
 
 
 List.append [1; 2; 3] [4; 5; 6]
