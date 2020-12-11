@@ -17,9 +17,10 @@ type PathEntry = {
 // hashはパスから取り出す。
 // 各行はそのハッシュのblobに対応したパスの情報を表す。
 // 一行は、
-// LastModified EntryDate   UPath
+// t LastModified EntryDate   UPath
 // の形式で、LastModifiedは対応するblobをimportした時のfileのlastmodified。
 // EntryDateはこの行を更新した時の日時
+// tはinstanceなら1、referenceなら2。
 type ManagedFile = { 
     Hash : Hash
     InstancePathList : PathEntry list
@@ -68,8 +69,9 @@ type ToFInfo = (Repo * UPath) -> FInfo option
 
 
 type FInfosToText = FInfo list -> string
-type SaveText = (OSPath * string) -> unit
+type ManagedFileToText = ManagedFile -> string
 
+type SaveText = (OSPath * string) -> unit
 
 
 
@@ -91,19 +93,9 @@ let toOSPath (repo:Repo) upath =
     else
         OSPath (Path.Combine(bpath, value))
 
-let computeFileHath ospath =
+let computeFileHash ospath =
     let (OSPath bpath) = ospath
     Hash (computeRawFileHash sha bpath)
-
-
-
-
-
-
-
-// let computeHash repo upath =
-//   osPathToHash (toOSPath repo upath)
-
 
 let bytesToString (bytes: byte[])=
     bytes |> Array.map (sprintf "%x") |> String.concat ""
@@ -131,6 +123,45 @@ let toBlobInfo repo hash =
         ManagedFile {Hash=hash; InstancePathList=[]; ReferencePathList=[]}
     else
         UnmanagedFile
+
+
+let repo = { Path = OSPath "/Users/arinokazuma/work/uit" }
+let h = computeFileHash (OSPath "/Users/arinokazuma/work/uit/Uit.fsx")
+
+
+let fi = FileInfo("/Users/arinokazuma/work/uit/Uit.fsx")
+fi.LastWriteTime
+
+DateTime(637433260866558117L)
+let entryCreated = DateTime.Now
+
+(UPath "Uit.fsx")
+
+
+let pe = {Path=(UPath "Uit.fsx"); LastModified=fi.LastWriteTime; EntryDate=entryCreated }
+
+
+let mf = {Hash= h; InstancePathList=[pe]; ReferencePathList=[]}
+
+let mfToText mf =
+    let totext tp (pe: PathEntry) =
+        let (UPath path) = pe.Path
+        sprintf "%d\t%d\t%d\t%s\n"  tp pe.LastModified.Ticks pe.EntryDate.Ticks path
+    let instances = mf.InstancePathList |> List.map (totext 1)
+    let refs = mf.ReferencePathList |> List.map (totext 2)
+    List.append instances refs |> List.reduce (+)
+
+
+mfToText mf
+
+
+
+
+List.append [1; 2; 3] [4; 5; 6]
+
+h
+
+hashPath h
 
 
 
