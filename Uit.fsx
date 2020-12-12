@@ -1,4 +1,5 @@
 open System
+open System.IO
 
 type Hash = Hash of byte array
 
@@ -7,10 +8,9 @@ type UPath = UPath of string
 // スラッシュ無しで始まりスラッシュ無しで終わる。
 // rootは""で表す。
 type UDir = UDir of UPath
-type OSPath = OSPath of string
 
 // このPathは最後のスラッシュは含まない
-type Repo = { Path: OSPath }
+type Repo = { Path: DirectoryInfo }
 
 type PathEntry = {
     Path : UPath
@@ -47,11 +47,11 @@ type FInfo = {
     MetaInfo : TypedPathEntry
 }
 
-type ComputeHash = Repo-> UPath -> Hash
-type ToBlobInfo = Repo -> Hash -> ManagedFile option
-type PathToBlobInfo = Repo -> UPath -> BlobInfo
+type ComputeHash = (Repo * UPath) -> Hash
+type ToBlobInfo = (Repo * Hash) -> ManagedFile option
+type PathToBlobInfo = (Repo * UPath) -> BlobInfo
 
-type ImportOne = Repo -> OSPath -> UPath -> ManagedFile
+type ImportOne = (Repo * FileInfo * UPath) -> ManagedFile
 type ListHash = Repo -> Hash list
 type ListBlobInfo = Repo -> ManagedFile list
 
@@ -81,11 +81,10 @@ type ToFInfo = (Repo * UPath) -> FInfo option
 type FInfosToText = FInfo list -> string
 type ManagedFileToText = ManagedFile -> string
 
-type SaveText = (OSPath * string) -> unit
+type SaveText = (FileInfo * string) -> unit
 
 
 
-open System.IO
 open System.Text
 open System.Security.Cryptography
 
@@ -95,17 +94,13 @@ let computeRawFileHash (sha:SHA256) (path:string) =
     use reader = new FileStream(path, FileMode.Open)
     sha.ComputeHash reader
 
-let toOSPath (repo:Repo) upath =
-    let (OSPath bpath) = repo.Path
-    let (UPath value) = upath
-    if value = "" then
-        OSPath (bpath + "/")
-    else
-        OSPath (Path.Combine(bpath, value))
 
-let computeFileHash ospath =
-    let (OSPath bpath) = ospath
-    Hash (computeRawFileHash sha bpath)
+let toFileInfo (repo:Repo) upath =
+    let (UPath value) = upath
+    FileInfo(Path.Combine(repo.Path.FullName, value))
+
+let computeFileHash (fi:FileInfo) =
+    Hash (computeRawFileHash sha fi.FullName)
 
 let bytesToString (bytes: byte[])=
     bytes |> Array.map (sprintf "%x") |> String.concat ""
@@ -119,11 +114,6 @@ let hashPath hash =
     let (Hash bytes) = hash
     let (UPath dir) = hashDir hash
     (UPath (sprintf "%s%s.txt" dir (bytesToString bytes.[1..])))
-
-
-let fileinfo ospath =
-    let (OSPath value) = ospath
-    FileInfo value
 
 
 let mfToText mf =
@@ -140,23 +130,15 @@ let ensureDir (di: DirectoryInfo) =
         Directory.CreateDirectory di.FullName |> ignore
     
 
-let rawSaveTo (fi: FileInfo) text =
+let saveText (fi: FileInfo) text =
     ensureDir fi.Directory
     File.WriteAllText("temp.dat", text)
     File.Move("temp.dat", fi.FullName)
 
 
-let saveText ospath text =
-    let (OSPath path) = ospath
-    rawSaveTo (FileInfo path) text
-
-let toRawFileInfo repo upath =
-    let (OSPath path) =  toOSPath repo upath
-    FileInfo path
-
 let toBlobInfo repo hash =
     let dir = hashPath hash
-    let fi = toRawFileInfo repo dir
+    let fi = toFileInfo repo dir
     let toPE (cells : string array) =
         {Path=(UPath cells.[2]); LastModified=DateTime(Int64.Parse cells.[0]); EntryDate=DateTime(Int64.Parse cells.[1])}
     let toIoR (line: string) =
@@ -176,21 +158,52 @@ let toBlobInfo repo hash =
             match ior with
             | Instance entry -> entry
             | Reference entry -> entry
-
         let ret = 
             File.ReadLines fi.FullName
             |> Seq.map toIoR
-
         let is = ret |> Seq.filter (onlyIorR true false) |> Seq.map inside |> Seq.toList
         let rs = ret |> Seq.filter (onlyIorR false true) |> Seq.map inside |> Seq.toList
         ManagedFile { Hash = hash; InstancePathList=is; ReferencePathList=rs }
     else
         UnmanagedFile
 
+let diEquals (di1:DirectoryInfo) (di2:DirectoryInfo) =
+    di1.FullName.TrimEnd(Path.DirectorySeparatorChar) = di2.FullName.TrimEnd(Path.DirectorySeparatorChar)
 
-let repo = { Path = OSPath "/Users/arinokazuma/work/testdata" }
+let toUPath (repo:Repo) (from:FileInfo) =
+    let fromAbs = from.FullName
+    let repoAbs = repo.Path.FullName + "/"
+    if not (fromAbs.StartsWith repoAbs) then
+        failwith "from is not under repo"
+    UPath (fromAbs.Substring repoAbs.Length)
 
-let h = computeFileHash (OSPath "/Users/arinokazuma/work/testdata/Uit.fsx")
+let toUDir (repo:Repo) (from:DirectoryInfo) =
+    let relative =
+        if diEquals repo.Path from then
+            ""
+        else
+            let fromAbs = from.FullName
+            let repoAbs = repo.Path.FullName + "/"
+            if not (fromAbs.StartsWith repoAbs) then
+                failwith "from is not under repo"
+            fromAbs.Substring repoAbs.Length
+    relative
+    |> UPath |> UDir
+
+let toDirInfo repo udir =
+    let (UDir path) = udir
+    let fi = toFileInfo repo path
+    fi.FullName.TrimEnd(Path.DirectorySeparatorChar)
+    |> DirectoryInfo
+
+let createUDir repo (abspath:string) =    
+    toUDir repo (DirectoryInfo (abspath.TrimEnd Path.DirectorySeparatorChar))
+
+
+
+let repo = { Path = DirectoryInfo "/Users/arinokazuma/work/testdata" }
+
+let h = computeFileHash (FileInfo "/Users/arinokazuma/work/testdata/Uit.fsx")
 
 let fi = FileInfo("/Users/arinokazuma/work/testdata/Uit.fsx")
 let entryCreated = DateTime.Now
@@ -201,26 +214,31 @@ let mf = {Hash= h; InstancePathList=[pe]; ReferencePathList=[]}
 mfToText mf
 
 let dest = hashPath mf.Hash
-saveText (toOSPath repo dest) (mfToText mf)
+saveText (toFileInfo repo dest) (mfToText mf)
 
 toBlobInfo repo h
 
+let dirInfo1 = DirectoryInfo "/Users/arinokazuma/work/testdata"
+let dirInfo2 = DirectoryInfo "/Users/arinokazuma/work/"
 
-let toUPath (repo:Repo) ospath =
-    let (OSPath from) = ospath
-    let (OSPath repopath) = repo.Path
-    if not (from.StartsWith repopath) then
-        failwith "ospath is not under repo"
-    UPath (from.Substring repopath.Length)
 
-let toDirInfo repo udir =
-    let (UDir path) = udir
-    let (OSPath abspath) = toOSPath repo path
-    DirectoryInfo abspath
 
-let createUDir repo (abspath:string) =    
-    let upath = toUPath repo (OSPath (abspath.TrimEnd '/'))
-    UDir (upath)
+diEquals dirInfo1.Parent dirInfo2
+
+dirInfo1.Parent.FullName.TrimEnd(Path.DirectorySeparatorChar) = dirInfo2.FullName.TrimEnd(Path.DirectorySeparatorChar)
+
+dirInfo1.Parent.FullName
+
+dirInfo2.FullName
+
+dirInfo1.Parent = dirInfo2
+dirInfo1.Parent.Equals dirInfo2
+
+(DirectoryInfo "../").FullName
+
+
+toUPath repo (FileInfo "/Users/arinokazuma/work/testdata/Uit.fsx")
+
 
 let root = createUDir repo "/Users/arinokazuma/work/testdata/"
 
@@ -229,8 +247,8 @@ let rootDI = toDirInfo repo root
 rootDI.EnumerateFiles()
 |> Seq.iter (fun fi-> printfn "%s" fi.Name )
 
-rootDI.EnumerateFiles()
-|> Seq.map (fun fi-> OSPath fi.FullName)
+
+
 
 
 let dir = DirectoryInfo( "/Users/arinokazuma/work/testdata/" )
@@ -246,7 +264,6 @@ repo
 "/hoge/ika/".TrimEnd('/')
 
 
-toUPath repo (OSPath "/Users/arinokazuma/work/testdata/")
 
 let from = "/Users/arinokazuma/work/testdata/"
 let repopath = "/Users/arinokazuma/work/testdata"
