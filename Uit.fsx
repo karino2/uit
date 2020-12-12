@@ -3,8 +3,13 @@ open System
 type Hash = Hash of byte array
 
 type UPath = UPath of string
+
+// スラッシュ無しで始まりスラッシュ無しで終わる。
+// rootは""で表す。
 type UDir = UDir of UPath
 type OSPath = OSPath of string
+
+// このPathは最後のスラッシュは含まない
 type Repo = { Path: OSPath }
 
 type PathEntry = {
@@ -39,7 +44,7 @@ type BlobInfo =
 
 type FInfo = {
     Hash : Hash
-    PathEntry : PathEntry
+    MetaInfo : TypedPathEntry
 }
 
 type ComputeHash = Repo-> UPath -> Hash
@@ -200,6 +205,60 @@ saveText (toOSPath repo dest) (mfToText mf)
 
 toBlobInfo repo h
 
+
+let toUPath (repo:Repo) ospath =
+    let (OSPath from) = ospath
+    let (OSPath repopath) = repo.Path
+    if not (from.StartsWith repopath) then
+        failwith "ospath is not under repo"
+    UPath (from.Substring repopath.Length)
+
+let toDirInfo repo udir =
+    let (UDir path) = udir
+    let (OSPath abspath) = toOSPath repo path
+    DirectoryInfo abspath
+
+let createUDir repo (abspath:string) =    
+    let upath = toUPath repo (OSPath (abspath.TrimEnd '/'))
+    UDir (upath)
+
+let root = createUDir repo "/Users/arinokazuma/work/testdata/"
+
+let rootDI = toDirInfo repo root
+
+rootDI.EnumerateFiles()
+|> Seq.iter (fun fi-> printfn "%s" fi.Name )
+
+rootDI.EnumerateFiles()
+|> Seq.map (fun fi-> OSPath fi.FullName)
+
+
+let dir = DirectoryInfo( "/Users/arinokazuma/work/testdata/" )
+
+dir.EnumerateFiles()
+|> Seq.iter (fun fi-> printfn "%s" fi.Name )
+
+
+
+repo
+
+
+"/hoge/ika/".TrimEnd('/')
+
+
+toUPath repo (OSPath "/Users/arinokazuma/work/testdata/")
+
+let from = "/Users/arinokazuma/work/testdata/"
+let repopath = "/Users/arinokazuma/work/testdata"
+
+from.StartsWith(repopath)
+
+(*
+DirectoryInfo dirPrograms = new DirectoryInfo(docPath);
+            DateTime StartOf2009 = new DateTime(2009, 01, 01);
+
+            var dirs = from dir in dirPrograms.EnumerateDirectories(
+*)
 
 
 fi.LastWriteTime
