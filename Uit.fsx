@@ -13,6 +13,11 @@ type PathEntry = {
     EntryDate: DateTime
 }
 
+type TypedPathEntry =
+| Instance of PathEntry
+| Reference of PathEntry
+
+
 // .uit/hash/xx/yyyyyyyyyyy.txt にかかれている情報
 // hashはパスから取り出す。
 // 各行はそのハッシュのblobに対応したパスの情報を表す。
@@ -116,33 +121,6 @@ let fileinfo ospath =
     FileInfo value
 
 
-let toBlobInfo repo hash =
-    let hashfile = hashPath hash
-    let osfinfo = fileinfo (toOSPath repo hashfile)
-    if osfinfo.Exists then
-        ManagedFile {Hash=hash; InstancePathList=[]; ReferencePathList=[]}
-    else
-        UnmanagedFile
-
-
-let repo = { Path = OSPath "/Users/arinokazuma/work/uit" }
-let h = computeFileHash (OSPath "/Users/arinokazuma/work/uit/Uit.fsx")
-
-
-let fi = FileInfo("/Users/arinokazuma/work/uit/Uit.fsx")
-fi.LastWriteTime
-
-DateTime(637433260866558117L)
-let entryCreated = DateTime.Now
-
-(UPath "Uit.fsx")
-
-
-let pe = {Path=(UPath "Uit.fsx"); LastModified=fi.LastWriteTime; EntryDate=entryCreated }
-
-
-let mf = {Hash= h; InstancePathList=[pe]; ReferencePathList=[]}
-
 let mfToText mf =
     let totext tp (pe: PathEntry) =
         let (UPath path) = pe.Path
@@ -150,9 +128,6 @@ let mfToText mf =
     let instances = mf.InstancePathList |> List.map (totext 1)
     let refs = mf.ReferencePathList |> List.map (totext 2)
     List.append instances refs |> List.reduce (+)
-
-
-mfToText mf
 
 
 let ensureDir (di: DirectoryInfo) =
@@ -173,18 +148,6 @@ let saveText ospath text =
 let toRawFileInfo repo upath =
     let (OSPath path) =  toOSPath repo upath
     FileInfo path
-
-
-let dest = hashPath mf.Hash
-
-
-saveText (toOSPath repo dest) (mfToText mf)
-
-type InstanceOrReference =
-| Instance of PathEntry
-| Reference of PathEntry
-
-
 
 let toBlobInfo repo hash =
     let dir = hashPath hash
@@ -219,7 +182,35 @@ let toBlobInfo repo hash =
     else
         UnmanagedFile
 
+
+let repo = { Path = OSPath "/Users/arinokazuma/work/testdata" }
+
+let h = computeFileHash (OSPath "/Users/arinokazuma/work/testdata/Uit.fsx")
+
+let fi = FileInfo("/Users/arinokazuma/work/testdata/Uit.fsx")
+let entryCreated = DateTime.Now
+
+let pe = {Path=(UPath "Uit.fsx"); LastModified=fi.LastWriteTime; EntryDate=entryCreated }
+let mf = {Hash= h; InstancePathList=[pe]; ReferencePathList=[]}
+
+mfToText mf
+
+let dest = hashPath mf.Hash
+saveText (toOSPath repo dest) (mfToText mf)
+
 toBlobInfo repo h
+
+
+
+fi.LastWriteTime
+
+DateTime(637433260866558117L)
+
+(UPath "Uit.fsx")
+
+
+
+
 
 
 (*
@@ -266,10 +257,14 @@ val it : BlobInfo =
                                          Year = 2020;} }]
       ReferencePathList = [] }*)
 
+let f = FileInfo("hoge/ika/fuga")
+f.Directory
+f.DirectoryName
 mfToText mf
 
 Int64.Parse("637433260866558117")
 
+["a"; "b"; "c"] |> String.concat "/"
 
 List.append [1; 2; 3] [4; 5; 6]
 
