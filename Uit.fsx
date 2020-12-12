@@ -19,15 +19,15 @@ type PathEntry = {
 }
 
 type TypedPathEntry =
-| Instance of PathEntry
-| Reference of PathEntry
+| InstancePE of PathEntry
+| ReferencePE of PathEntry
 
 
 // .uit/hash/xx/yyyyyyyyyyy.txt にかかれている情報
 // hashはパスから取り出す。
 // 各行はそのハッシュのblobに対応したパスの情報を表す。
 // 一行は、
-// t LastModified EntryDate   UPath
+// t LastModified EntryDate   fname
 // の形式で、LastModifiedは対応するblobをimportした時のfileのlastmodified。
 // EntryDateはこの行を更新した時の日時
 // tはinstanceなら1、referenceなら2。
@@ -40,12 +40,6 @@ type ManagedFile = {
 type BlobInfo = 
 | ManagedFile of ManagedFile
 | UnmanagedFile
-
-
-type FInfo = {
-    Hash : Hash
-    MetaInfo : TypedPathEntry
-}
 
 type ComputeHash = (Repo * UPath) -> Hash
 type ToBlobInfo = (Repo * Hash) -> ManagedFile option
@@ -72,8 +66,19 @@ type Paths = Repo -> Hash -> UPath list
 // 例えば hoge/ika/test.txtというファイルの情報は、
 // .uit/dirs/hoge/ika/dir.txt にある。
 // このdir.txtの中身の各行はFInfoを表し、
-// LastModified EntryDate Hash ファイル名
-// となっている。
+// tp LastModified EntryDate Hash ファイル名
+// となっている。tpはinstanceなら1, referenceなら2
+// EntryDateはhash下と同じ物を使う。
+type FInfoEntry = {
+    Hash: Hash
+    FName: string
+    LastModified: DateTime
+    EntryDate: DateTime
+}
+type FInfo = 
+| InstanceFile of FInfoEntry
+| ReferenceFile of FInfoEntry
+
 type DirInfo = (Repo * UDir) -> FInfo list
 type ToFInfo = (Repo * UPath) -> FInfo option
 
@@ -102,8 +107,12 @@ let toFileInfo (repo:Repo) upath =
 let computeFileHash (fi:FileInfo) =
     Hash (computeRawFileHash sha fi.FullName)
 
-let bytesToString (bytes: byte[])=
+let bytes2string (bytes: byte[])=
     bytes |> Array.map (sprintf "%x") |> String.concat ""
+
+let hash2string hash =
+    let (Hash value) = hash
+    bytes2string value
 
 let hashDir hash =
     let (Hash bytes) = hash
@@ -113,10 +122,10 @@ let hashDir hash =
 let hashPath hash =
     let (Hash bytes) = hash
     let (UPath dir) = hashDir hash
-    (UPath (sprintf "%s%s.txt" dir (bytesToString bytes.[1..])))
+    (UPath (sprintf "%s%s.txt" dir (bytes2string bytes.[1..])))
 
 
-let mfToText mf =
+let mf2text mf =
     let totext tp (pe: PathEntry) =
         let (UPath path) = pe.Path
         sprintf "%d\t%d\t%d\t%s\n"  tp pe.LastModified.Ticks pe.EntryDate.Ticks path
@@ -133,7 +142,7 @@ let ensureDir (di: DirectoryInfo) =
 let saveText (fi: FileInfo) text =
     ensureDir fi.Directory
     File.WriteAllText("temp.dat", text)
-    File.Move("temp.dat", fi.FullName)
+    File.Move("temp.dat", fi.FullName, true)
 
 
 let toBlobInfo repo hash =
@@ -145,19 +154,19 @@ let toBlobInfo repo hash =
         let cells = line.Split('\t')
         let tp = cells.[0]
         match tp with
-        | "1" -> Instance (toPE cells.[1..])
-        | "2" -> Reference (toPE cells.[1..])
+        | "1" -> InstancePE (toPE cells.[1..])
+        | "2" -> ReferencePE (toPE cells.[1..])
         | _ -> failwith "invalid data"
     if fi.Exists then
         let onlyIorR icase rcase =
             fun m ->
                 match m with
-                |Instance _-> icase
-                |Reference _ -> rcase
+                |InstancePE _-> icase
+                |ReferencePE _ -> rcase
         let inside ior =
             match ior with
-            | Instance entry -> entry
-            | Reference entry -> entry
+            | InstancePE entry -> entry
+            | ReferencePE entry -> entry
         let ret = 
             File.ReadLines fi.FullName
             |> Seq.map toIoR
@@ -199,6 +208,30 @@ let toDirInfo repo udir =
 let createUDir repo (abspath:string) =    
     toUDir repo (DirectoryInfo (abspath.TrimEnd Path.DirectorySeparatorChar))
 
+let computeFInfo fi =
+    let hash = computeFileHash fi
+    InstanceFile {Hash = hash; FName=fi.Name; LastModified=fi.LastWriteTime; EntryDate=DateTime.Now}
+
+let finfo2text finfo =
+    let fmt tp (lastmod:DateTime) (entdt:DateTime) hash fname =
+        sprintf "%d\t%d\t%d\t%s\t%s" tp lastmod.Ticks entdt.Ticks (hash2string hash) fname
+    let format tp pe =
+        fmt tp pe.LastModified pe.EntryDate pe.Hash pe.FName
+    match finfo with
+    | InstanceFile pe -> format 1 pe
+    | ReferenceFile pe -> format 2 pe
+
+let dirFileFI (repo:Repo) udir =
+    let dirRoot = Path.Combine(repo.Path.FullName, ".uit", "dirs")
+    let (UDir (UPath relative)) = udir
+    let dir = 
+        if String.IsNullOrEmpty relative then
+            dirRoot
+        else
+            Path.Combine(dirRoot, relative)
+    Path.Combine(dir, "dir.txt") |> FileInfo
+
+
 
 
 let repo = { Path = DirectoryInfo "/Users/arinokazuma/work/testdata" }
@@ -211,12 +244,72 @@ let entryCreated = DateTime.Now
 let pe = {Path=(UPath "Uit.fsx"); LastModified=fi.LastWriteTime; EntryDate=entryCreated }
 let mf = {Hash= h; InstancePathList=[pe]; ReferencePathList=[]}
 
-mfToText mf
+mf2text mf
 
 let dest = hashPath mf.Hash
-saveText (toFileInfo repo dest) (mfToText mf)
+saveText (toFileInfo repo dest) (mf2text mf)
 
 toBlobInfo repo h
+
+
+let upath = toUPath repo (FileInfo "/Users/arinokazuma/work/testdata/Uit.fsx")
+
+let finfo = computeFInfo (FileInfo "/Users/arinokazuma/work/testdata/Uit.fsx")
+
+
+
+
+
+
+let root = createUDir repo "/Users/arinokazuma/work/testdata/"
+
+let rootDI = toDirInfo repo root
+
+let finfos = rootDI.EnumerateFiles()
+             |> Seq.map computeFInfo
+             |> Seq.toList
+
+finfos
+|> List.map finfo2text
+|> String.concat "\n"
+
+
+finfo2text finfo
+
+let dirfi = dirFileFI repo root
+dirfi.Directory |> ensureDir
+
+finfos
+|> List.map finfo2text
+|> String.concat "\n"
+|> saveText dirfi
+
+File.ReadLines dirfi.FullName
+|> Seq.iter (fun line-> printfn "%s" line)
+
+
+finfo2text finfo
+|> saveText dirfi
+
+
+let dir = DirectoryInfo( "/Users/arinokazuma/work/testdata/" )
+
+dir.EnumerateFiles()
+|> Seq.iter (fun fi-> printfn "%s" fi.Name )
+
+
+let toFName upath =
+    let (UPath path) = upath
+    path.Split("/")
+    |> Array.last
+
+
+
+repo
+
+
+"/hoge/ika/".TrimEnd('/')
+
 
 let dirInfo1 = DirectoryInfo "/Users/arinokazuma/work/testdata"
 let dirInfo2 = DirectoryInfo "/Users/arinokazuma/work/"
@@ -235,33 +328,6 @@ dirInfo1.Parent = dirInfo2
 dirInfo1.Parent.Equals dirInfo2
 
 (DirectoryInfo "../").FullName
-
-
-toUPath repo (FileInfo "/Users/arinokazuma/work/testdata/Uit.fsx")
-
-
-let root = createUDir repo "/Users/arinokazuma/work/testdata/"
-
-let rootDI = toDirInfo repo root
-
-rootDI.EnumerateFiles()
-|> Seq.iter (fun fi-> printfn "%s" fi.Name )
-
-
-
-
-
-let dir = DirectoryInfo( "/Users/arinokazuma/work/testdata/" )
-
-dir.EnumerateFiles()
-|> Seq.iter (fun fi-> printfn "%s" fi.Name )
-
-
-
-repo
-
-
-"/hoge/ika/".TrimEnd('/')
 
 
 
@@ -336,7 +402,7 @@ val it : BlobInfo =
 let f = FileInfo("hoge/ika/fuga")
 f.Directory
 f.DirectoryName
-mfToText mf
+mf2text mf
 
 Int64.Parse("637433260866558117")
 
@@ -384,7 +450,7 @@ fi.Create()
 fi.Directory
 
 sprintf "%x" h.[0]
-bytesToString h.[1..]
+bytes2string h.[1..]
 
 
 let upath path =
