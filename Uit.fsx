@@ -49,6 +49,7 @@ type ImportOne = Repo -> FileInfo -> UPath -> ManagedFile
 
 type ListHash = Repo -> Hash list
 type ListMF = Repo -> ManagedFile list
+type ListDupMF = Repo -> ManagedFile list
 
 type SaveBInfo = Repo -> ManagedFile -> unit
 
@@ -417,7 +418,9 @@ let listMF :ListMF = fun repo ->
     |> List.map (fun bi -> match bi with |ManagedFile mf->mf|UnmanagedFile -> failwith("never reached"))
 
 
-// TODO: listDupMF
+let listDupMF : ListDupMF = fun repo->
+    listMF repo
+    |> List.filter (fun mf-> match mf.InstancePathList with |_::_::_->true|_->false )
 
 //
 // Trial code
@@ -525,4 +528,5 @@ listHash repo
 listMF repo
 |> List.map mf2upaths |> List.concat
 
-
+listMF repo
+listDupMF repo
