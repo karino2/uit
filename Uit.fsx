@@ -48,7 +48,7 @@ type PathToBInfo = Repo -> UPath -> BlobInfo
 type ImportOne = Repo -> FileInfo -> UPath -> ManagedFile
 
 type ListHash = Repo -> Hash list
-type ListBlobInfo = Repo -> ManagedFile list
+type ListMF = Repo -> ManagedFile list
 
 type SaveBInfo = Repo -> ManagedFile -> unit
 
@@ -361,14 +361,20 @@ let upath2binfo :UPath2BlobInfo = fun repo upath ->
     |> Option.map finfo2fie
     |> Option.map fie2bi
 
-// fsharplint:disable Hints
-let init :Init = fun repo ->
+let normalDirs (repo:Repo) =
     repo.Path.EnumerateDirectories()
     |> Seq.filter (fun di->
                      match di.Name with
                      | ".uit" -> false
                      | _-> true
                   )
+
+let rootDir = UDir (UPath "")
+
+// fsharplint:disable Hints
+let init :Init = fun repo ->
+    initOneDir repo rootDir |> ignore
+    normalDirs repo
     |> Seq.map (fun di-> (createUDir repo di.FullName))
     |> Seq.map (initOneDir repo)
     |> Seq.toList
@@ -389,8 +395,28 @@ let pe2path pe = pe.Path
 let bi2allpes bi =
     List.append (bi2instances bi) (bi2refs bi)
 
-// TODO: listHash
-// TODO: listMF
+
+let listHash :ListHash =  fun repo ->
+    let dir2hash (di:DirectoryInfo) =        
+        let bs = di.Name
+        let removeExt (name:string) = name.Substring(0, name.Length-4) 
+        di.EnumerateFiles()
+        |> Seq.filter (fun fi->fi.Name.EndsWith(".txt"))
+        |> Seq.map (fun fi->(removeExt fi.Name))
+        |> Seq.map (fun rest-> bs+rest)
+        |> Seq.map (string2bytes >> Hash)
+        |> Seq.toList
+    DirectoryInfo(Path.Combine(repo.Path.FullName, ".uit", "hash")).EnumerateDirectories()
+    |> Seq.map dir2hash
+    |> Seq.concat
+    |> Seq.toList
+
+let listMF :ListMF = fun repo ->
+    listHash repo
+    |> List.map (toBlobInfo repo)
+    |> List.map (fun bi -> match bi with |ManagedFile mf->mf|UnmanagedFile -> failwith("never reached"))
+
+
 // TODO: listDupMF
 
 //
@@ -463,6 +489,7 @@ toFInfo repo mikochan
 // Init
 //
 
+deleteUitDir repo
 init repo
 
 //
@@ -479,3 +506,23 @@ upath2binfo repo mikochan
 upath2binfo repo mikochan
 |> Option.map bi2instances
 |> Option.map (List.map pe2path)
+
+
+//
+// listHash
+//
+
+let mf2upaths mf =
+    let ip =
+        mf.InstancePathList
+        |> List.map (fun pe-> pe.Path)
+    let rp =
+        mf.ReferencePathList
+        |> List.map (fun pe-> pe.Path)
+    List.append ip rp
+
+listHash repo
+listMF repo
+|> List.map mf2upaths |> List.concat
+
+
