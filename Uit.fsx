@@ -46,6 +46,7 @@ type ToBlobInfo = Repo -> Hash -> BlobInfo
 type PathToBlobInfo = Repo -> UPath -> BlobInfo
 
 type ImportOne = Repo -> FileInfo -> UPath -> ManagedFile
+
 type ListHash = Repo -> Hash list
 type ListBlobInfo = Repo -> ManagedFile list
 
@@ -78,6 +79,12 @@ type FInfoEntry = {
 type FInfo = 
 | InstanceFile of FInfoEntry
 | ReferenceFile of FInfoEntry
+
+// Repo下のファイルの.uit/hash と .uit/dirsを作る。
+// まだhashなどが存在しない状態で行われるのでImportとは処理を分けておく
+// .uit/dirsを作る都合でファイル単位じゃなくてディレクトリ単位
+type InitOneDir = Repo -> UDir -> FInfo list
+
 
 type DirInfo = Repo -> UDir -> FInfo list
 type ToFInfo = Repo -> UPath -> FInfo option
@@ -272,6 +279,50 @@ let dirInfo :DirInfo = fun repo udir ->
     |> Seq.map toFInfo
     |> Seq.toList
 
+let computeAndSaveDirInfo = fun repo udir ->
+    let fis = computeFInfoList repo udir
+    let dirfi = dirFileFI repo udir
+    dirfi.Directory |> ensureDir
+    finfos2text fis
+    |> saveText dirfi
+    fis
+
+let createUPath udir fname =
+    let (UDir (UPath dir)) = udir
+    if dir= "" then
+        UPath fname
+    else
+        UPath (sprintf "%s/%s" dir fname)
+
+let finfo2fie finfo =
+    match finfo with
+    |InstanceFile fie -> fie
+    |ReferenceFile fie -> fie
+
+let initOneDir :InitOneDir  = fun repo udir ->
+    let fis = computeAndSaveDirInfo repo udir
+    let fi2pe (fie:FInfoEntry) =
+        let upath = createUPath udir fie.FName
+        {Path=upath; LastModified=fie.LastModified; EntryDate=fie.EntryDate }
+    let fi2blobInfo (fie:FInfoEntry) =
+        let pe = fi2pe fie
+        let bi = toBlobInfo repo fie.Hash
+        match bi with
+        |ManagedFile mf -> {mf with InstancePathList=pe::mf.InstancePathList }
+        |UnmanagedFile -> {Hash =  fie.Hash; InstancePathList=[pe]; ReferencePathList=[]}
+    let savemf (mf:ManagedFile) =
+        let dest = hashPath mf.Hash
+        saveText (toFileInfo repo dest) (mf2text mf)
+    fis
+    |> List.map (finfo2fie >> fi2blobInfo)
+    |> List.iter savemf
+    fis
+
+let deleteUitDir (repo:Repo) =
+    Directory.Delete(Path.Combine(repo.Path.FullName, ".uit") ,true)
+
+
+
 //
 // Trial code
 //
@@ -319,3 +370,10 @@ finfos2text finfos
 dirInfo repo root
 
 
+//
+// InitOneDir
+//
+
+deleteUitDir repo
+
+initOneDir repo root
