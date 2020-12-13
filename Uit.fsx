@@ -42,15 +42,15 @@ type BlobInfo =
 | UnmanagedFile
 
 type ComputeHash = Repo -> UPath -> Hash
-type ToBlobInfo = Repo -> Hash -> BlobInfo
-type PathToBlobInfo = Repo -> UPath -> BlobInfo
+type ToBInfo = Repo -> Hash -> BlobInfo
+type PathToBInfo = Repo -> UPath -> BlobInfo
 
 type ImportOne = Repo -> FileInfo -> UPath -> ManagedFile
 
 type ListHash = Repo -> Hash list
 type ListBlobInfo = Repo -> ManagedFile list
 
-type SaveBlobInfo = Repo -> ManagedFile -> unit
+type SaveBInfo = Repo -> ManagedFile -> unit
 
 type InstancePaths = ManagedFile -> PathEntry list
 type ReferencePaths = ManagedFile -> PathEntry list
@@ -85,18 +85,22 @@ type FInfo =
 // .uit/dirsを作る都合でファイル単位じゃなくてディレクトリ単位
 type InitOneDir = Repo -> UDir -> FInfo list
 
+// Repo下のファイルを全てなめて.uit/hashと.uit/dirsを作る
+type Init = Repo -> unit
 
 type DirInfo = Repo -> UDir -> FInfo list
 type ToFInfo = Repo -> UPath -> FInfo option
+type UPath2BlobInfo  = Repo -> UPath -> BlobInfo option
 
 type FInfos2Text = FInfo list -> string
 type ManagedFileToText = ManagedFile -> string
 
 type SaveText = FileInfo -> string -> unit
 
+//
+// Implementation
+// 
 
-
-open System.Text
 open System.Security.Cryptography
 
 let sha = SHA256.Create()
@@ -151,7 +155,7 @@ let saveText (fi: FileInfo) text =
     File.Move("temp.dat", fi.FullName, true)
 
 
-let toBlobInfo :ToBlobInfo = fun repo hash ->
+let toBlobInfo :ToBInfo = fun repo hash ->
     let dir = hashPath hash
     let fi = toFileInfo repo dir
     let toPE (cells : string array) =
@@ -307,7 +311,7 @@ let initOneDir :InitOneDir  = fun repo udir ->
     let fi2pe (fie:FInfoEntry) =
         let upath = createUPath udir fie.FName
         {Path=upath; LastModified=fie.LastModified; EntryDate=fie.EntryDate }
-    let fi2blobInfo (fie:FInfoEntry) =
+    let fi2binfo (fie:FInfoEntry) =
         let pe = fi2pe fie
         let bi = toBlobInfo repo fie.Hash
         match bi with
@@ -317,7 +321,7 @@ let initOneDir :InitOneDir  = fun repo udir ->
         let dest = hashPath mf.Hash
         saveText (toFileInfo repo dest) (mf2text mf)
     fis
-    |> List.map (finfo2fie >> fi2blobInfo)
+    |> List.map (finfo2fie >> fi2binfo)
     |> List.iter savemf
     fis
 
@@ -348,7 +352,46 @@ let toFInfo :ToFInfo = fun repo upath ->
     match fis with
     | x::_ -> Some x
     | _-> None
-    
+
+
+let upath2binfo :UPath2BlobInfo = fun repo upath ->
+    let fie2bi (fie:FInfoEntry) =
+        toBlobInfo repo fie.Hash
+    toFInfo repo upath
+    |> Option.map finfo2fie
+    |> Option.map fie2bi
+
+// fsharplint:disable Hints
+let init :Init = fun repo ->
+    repo.Path.EnumerateDirectories()
+    |> Seq.filter (fun di->
+                     match di.Name with
+                     | ".uit" -> false
+                     | _-> true
+                  )
+    |> Seq.map (fun di-> (createUDir repo di.FullName))
+    |> Seq.map (initOneDir repo)
+    |> Seq.toList
+    |> ignore
+
+let bi2instances bi =
+    match bi with
+    | ManagedFile mf-> mf.InstancePathList
+    | UnmanagedFile ->[]
+
+let bi2refs bi =
+    match bi with
+    | ManagedFile mf-> mf.ReferencePathList
+    | UnmanagedFile ->[]
+
+let pe2path pe = pe.Path
+
+let bi2allpes bi =
+    List.append (bi2instances bi) (bi2refs bi)
+
+// TODO: listHash
+// TODO: listMF
+// TODO: listDupMF
 
 //
 // Trial code
@@ -416,3 +459,23 @@ let imgfis = initOneDir repo imgs
 let mikochan = UPath "sns/美子ちゃん.pxv"
 toFInfo repo mikochan 
 
+//
+// Init
+//
+
+init repo
+
+//
+// upath2binfo
+//
+
+upath2binfo repo mikochan
+
+upath2binfo repo mikochan
+|> Option.map bi2allpes
+|> Option.map (List.map pe2path)
+
+
+upath2binfo repo mikochan
+|> Option.map bi2instances
+|> Option.map (List.map pe2path)
