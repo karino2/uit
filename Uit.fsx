@@ -266,15 +266,18 @@ let dirInfo :DirInfo = fun repo udir ->
     let fi = dirFileFI repo udir
     let toFInfo (line :string) =
         let cells = line.Split('\t', 5)
-        let (tp, laststr, entdtstr, hashstr, fname) = (cells.[0], cells.[1], cells.[2], cells.[3], cells.[4])
-        let hash = Hash (string2bytes hashstr)
-        let last = DateTime(Int64.Parse laststr)
-        let entdt = DateTime(Int64.Parse entdtstr)
-        let fent = {Hash = hash; FName = fname; LastModified = last; EntryDate = entdt}
-        if tp = "1" then
-            InstanceFile fent
-        else
-            ReferenceFile fent  
+        //let (tp, laststr, entdtstr, hashstr, fname) = (cells.[0], cells.[1], cells.[2], cells.[3], cells.[4])
+        match cells with
+        | [|tp; laststr; entdtstr; hashstr; fname|] ->
+            let hash = Hash (string2bytes hashstr)
+            let last = DateTime(Int64.Parse laststr)
+            let entdt = DateTime(Int64.Parse entdtstr)
+            let fent = {Hash = hash; FName = fname; LastModified = last; EntryDate = entdt}
+            if tp = "1" then
+                InstanceFile fent
+            else
+                ReferenceFile fent
+        |_ -> failwith "corrupted dir.txt"
     File.ReadLines(fi.FullName)
     |> Seq.map toFInfo
     |> Seq.toList
@@ -377,3 +380,11 @@ dirInfo repo root
 deleteUitDir repo
 
 initOneDir repo root
+
+
+let arr = [|1..5|]
+
+arr
+
+let [|a; b; c; d; e|] = arr
+a
