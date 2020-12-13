@@ -1,4 +1,100 @@
 
+type TraceBuilder() =
+    member this.Delay(funcToDelay) =
+        let delayed = fun()->
+            printfn "%A - starting delayed fn." funcToDelay
+            let res = funcToDelay()
+            printfn "%A - Finished Delayed. result=%A" funcToDelay res
+            res
+        printfn "%A - Delaying using %A" funcToDelay delayed
+        delayed
+
+    member this.Return(x) = 
+        printfn "Return an unwrapped %A as an option" x
+        Some x
+
+    member this.Zero() = 
+        printfn "Zero"
+        None
+
+    member this.Combine (a,b) = 
+        printfn "Returning early with %A. Ignoring second part: %A" a b 
+        a
+
+    member this.Run(funcToRun) =
+        printfn "%A - Run Start." funcToRun
+        let res = funcToRun()
+        printfn "%A - Run End. Result is %A" funcToRun res
+        res
+        
+   
+let trace = TraceBuilder()
+
+trace {
+    printfn "Part 1: about to return 1"
+    return 1
+    printfn "Part 2: after return has happened"
+    } |> printfn "Result for Part1 without Part2: %A"
+
+let f = trace {
+    printfn "Part 1: about to return 1"
+    return 1
+    printfn "Part 2: after return has happened"
+    }
+
+f() |> printfn "Result for Part1 without Part2: %A"
+
+type ListBuilder() =
+    member this.Bind(m, f) =
+        m |> List.collect f
+
+    member this.Zero() =
+        printfn "Zero"
+        []
+
+    member this.Yield(x) =
+        printfn "Yield %A as a list" x
+        [x]
+    
+    member this.YieldFrom(m) =
+        printfn "Yield %A directly" m
+        m
+
+    member this.For(m, f) =
+        printfn "For %A" m
+        this.Bind(m, f)
+    
+    member this.Combine(a, b) =
+        printfn "combining %A and %A" a b
+        List.concat [a; b]
+
+    member this.Delay(f) =
+        printfn "Delay"
+        f()
+
+let listbuilder = ListBuilder()
+
+listbuilder {
+    yield 1
+    yield 2
+} |> printfn "Result :%A "
+
+listbuilder {
+    for i in ["red"; "blue"] do
+        yield i
+        for j in ["hat"; "tie"] do
+            yield! [i + " " + j; "-"]
+} |> printfn "Result :%A "
+
+listbuilder {
+    yield 1
+    yield 2
+    yield 3
+    yield 4
+} |> printfn "Result :%A "
+
+
+
 let rec loopAndPrint aList = 
     match aList with 
     // empty list means we're done.
