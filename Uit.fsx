@@ -325,6 +325,30 @@ let deleteUitDir (repo:Repo) =
     Directory.Delete(Path.Combine(repo.Path.FullName, ".uit") ,true)
 
 
+let parentDir (UPath upath) =
+    let comps = upath.Split('/')
+    if comps.Length = 1 then
+        UDir (UPath "")
+    else
+        comps.[0..(comps.Length-2)]
+        |> String.concat "/"
+        |> UPath |> UDir
+
+let fileName (UPath upath) =
+    let comps = upath.Split('/')
+    comps.[comps.Length-1]
+
+
+let toFInfo :ToFInfo = fun repo upath ->
+    let udir = parentDir upath
+    let fname = fileName upath
+    let fis =
+        dirInfo repo udir
+        |> List.filter (fun fi -> (finfo2fie fi).FName = fname )
+    match fis with
+    | x::_ -> Some x
+    | _-> None
+    
 
 //
 // Trial code
@@ -381,10 +405,14 @@ deleteUitDir repo
 
 initOneDir repo root
 
+let sns = createUDir repo "/Users/arinokazuma/work/testdata/sns/"
+let imgs = createUDir repo "/Users/arinokazuma/work/testdata/imgs/"
 
-let arr = [|1..5|]
+let snsfis = initOneDir repo sns
+let imgfis = initOneDir repo imgs
 
-arr
 
-let [|a; b; c; d; e|] = arr
-a
+// read
+let mikochan = UPath "sns/美子ちゃん.pxv"
+toFInfo repo mikochan 
+
