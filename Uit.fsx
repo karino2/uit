@@ -41,15 +41,15 @@ type BlobInfo =
 | ManagedFile of ManagedFile
 | UnmanagedFile
 
-type ComputeHash = (Repo * UPath) -> Hash
-type ToBlobInfo = (Repo * Hash) -> ManagedFile option
-type PathToBlobInfo = (Repo * UPath) -> BlobInfo
+type ComputeHash = Repo -> UPath -> Hash
+type ToBlobInfo = Repo -> Hash -> BlobInfo
+type PathToBlobInfo = Repo -> UPath -> BlobInfo
 
-type ImportOne = (Repo * FileInfo * UPath) -> ManagedFile
+type ImportOne = Repo -> FileInfo -> UPath -> ManagedFile
 type ListHash = Repo -> Hash list
 type ListBlobInfo = Repo -> ManagedFile list
 
-type SaveBlobInfo = (Repo * ManagedFile) -> unit
+type SaveBlobInfo = Repo -> ManagedFile -> unit
 
 type InstancePaths = ManagedFile -> PathEntry list
 type ReferencePaths = ManagedFile -> PathEntry list
@@ -79,14 +79,13 @@ type FInfo =
 | InstanceFile of FInfoEntry
 | ReferenceFile of FInfoEntry
 
-type DirInfo = (Repo * UDir) -> FInfo list
-type ToFInfo = (Repo * UPath) -> FInfo option
+type DirInfo = Repo -> UDir -> FInfo list
+type ToFInfo = Repo -> UPath -> FInfo option
 
-
-type FInfosToText = FInfo list -> string
+type FInfos2Text = FInfo list -> string
 type ManagedFileToText = ManagedFile -> string
 
-type SaveText = (FileInfo * string) -> unit
+type SaveText = FileInfo -> string -> unit
 
 
 
@@ -108,7 +107,7 @@ let computeFileHash (fi:FileInfo) =
     Hash (computeRawFileHash sha fi.FullName)
 
 let bytes2string (bytes: byte[])=
-    bytes |> Array.map (sprintf "%x") |> String.concat ""
+    bytes |> Array.map (sprintf "%02x") |> String.concat ""
 
 let hash2string hash =
     let (Hash value) = hash
@@ -116,7 +115,7 @@ let hash2string hash =
 
 let hashDir hash =
     let (Hash bytes) = hash
-    (UPath (sprintf ".uit/hash/%x/" bytes.[0]))
+    (UPath (sprintf ".uit/hash/%02x/" bytes.[0]))
 
 
 let hashPath hash =
@@ -125,7 +124,7 @@ let hashPath hash =
     (UPath (sprintf "%s%s.txt" dir (bytes2string bytes.[1..])))
 
 
-let mf2text mf =
+let mf2text :ManagedFileToText = fun mf->
     let totext tp (pe: PathEntry) =
         let (UPath path) = pe.Path
         sprintf "%d\t%d\t%d\t%s\n"  tp pe.LastModified.Ticks pe.EntryDate.Ticks path
@@ -145,13 +144,13 @@ let saveText (fi: FileInfo) text =
     File.Move("temp.dat", fi.FullName, true)
 
 
-let toBlobInfo repo hash =
+let toBlobInfo :ToBlobInfo = fun repo hash ->
     let dir = hashPath hash
     let fi = toFileInfo repo dir
     let toPE (cells : string array) =
         {Path=(UPath cells.[2]); LastModified=DateTime(Int64.Parse cells.[0]); EntryDate=DateTime(Int64.Parse cells.[1])}
     let toIoR (line: string) =
-        let cells = line.Split('\t')
+        let cells = line.Split('\t', 4)
         let tp = cells.[0]
         match tp with
         | "1" -> InstancePE (toPE cells.[1..])
@@ -221,6 +220,19 @@ let finfo2text finfo =
     | InstanceFile pe -> format 1 pe
     | ReferenceFile pe -> format 2 pe
 
+let finfos2text finfos =
+    finfos
+    |> List.map finfo2text
+    |> String.concat "\n"
+
+let computeFInfoList repo udir =
+    let di = toDirInfo repo udir
+    di.EnumerateFiles()
+    |> Seq.map computeFInfo
+    |> Seq.toList
+
+
+
 let dirFileFI (repo:Repo) udir =
     let dirRoot = Path.Combine(repo.Path.FullName, ".uit", "dirs")
     let (UDir (UPath relative)) = udir
@@ -231,10 +243,45 @@ let dirFileFI (repo:Repo) udir =
             Path.Combine(dirRoot, relative)
     Path.Combine(dir, "dir.txt") |> FileInfo
 
+open System.Globalization
 
+let string2bytes (sbytes: string) =
+    let rec tobytelist (str:string) =
+        if str.Length >= 2 then
+            Byte.Parse( str.[0..1], NumberStyles.HexNumber )::(tobytelist str.[2..])
+        else
+            assert (str.Length = 0)
+            []
+    tobytelist sbytes
+    |> List.toArray
+    
+let dirInfo :DirInfo = fun repo udir ->
+    let fi = dirFileFI repo udir
+    let toFInfo (line :string) =
+        let cells = line.Split('\t', 5)
+        let (tp, laststr, entdtstr, hashstr, fname) = (cells.[0], cells.[1], cells.[2], cells.[3], cells.[4])
+        let hash = Hash (string2bytes hashstr)
+        let last = DateTime(Int64.Parse laststr)
+        let entdt = DateTime(Int64.Parse entdtstr)
+        let fent = {Hash = hash; FName = fname; LastModified = last; EntryDate = entdt}
+        if tp = "1" then
+            InstanceFile fent
+        else
+            ReferenceFile fent  
+    File.ReadLines(fi.FullName)
+    |> Seq.map toFInfo
+    |> Seq.toList
 
+//
+// Trial code
+//
 
 let repo = { Path = DirectoryInfo "/Users/arinokazuma/work/testdata" }
+
+
+// 
+// create MangedFile and save at .uit/hash
+//
 
 let h = computeFileHash (FileInfo "/Users/arinokazuma/work/testdata/Uit.fsx")
 
@@ -249,272 +296,26 @@ mf2text mf
 let dest = hashPath mf.Hash
 saveText (toFileInfo repo dest) (mf2text mf)
 
+// read
 toBlobInfo repo h
 
 
-let upath = toUPath repo (FileInfo "/Users/arinokazuma/work/testdata/Uit.fsx")
-
-let finfo = computeFInfo (FileInfo "/Users/arinokazuma/work/testdata/Uit.fsx")
-
-
-
-
-
+// 
+// create FInfo list and save at .uit/dirs
+//
 
 let root = createUDir repo "/Users/arinokazuma/work/testdata/"
 
-let rootDI = toDirInfo repo root
-
-let finfos = rootDI.EnumerateFiles()
-             |> Seq.map computeFInfo
-             |> Seq.toList
-
-finfos
-|> List.map finfo2text
-|> String.concat "\n"
-
-
-finfo2text finfo
+let finfos = computeFInfoList repo root
 
 let dirfi = dirFileFI repo root
 dirfi.Directory |> ensureDir
 
-finfos
-|> List.map finfo2text
-|> String.concat "\n"
-|> saveText dirfi
-
-File.ReadLines dirfi.FullName
-|> Seq.iter (fun line-> printfn "%s" line)
-
-
-finfo2text finfo
+finfos2text finfos
 |> saveText dirfi
 
 
-let dir = DirectoryInfo( "/Users/arinokazuma/work/testdata/" )
+// read
+dirInfo repo root
 
-dir.EnumerateFiles()
-|> Seq.iter (fun fi-> printfn "%s" fi.Name )
 
-
-let toFName upath =
-    let (UPath path) = upath
-    path.Split("/")
-    |> Array.last
-
-
-
-repo
-
-
-"/hoge/ika/".TrimEnd('/')
-
-
-let dirInfo1 = DirectoryInfo "/Users/arinokazuma/work/testdata"
-let dirInfo2 = DirectoryInfo "/Users/arinokazuma/work/"
-
-
-
-diEquals dirInfo1.Parent dirInfo2
-
-dirInfo1.Parent.FullName.TrimEnd(Path.DirectorySeparatorChar) = dirInfo2.FullName.TrimEnd(Path.DirectorySeparatorChar)
-
-dirInfo1.Parent.FullName
-
-dirInfo2.FullName
-
-dirInfo1.Parent = dirInfo2
-dirInfo1.Parent.Equals dirInfo2
-
-(DirectoryInfo "../").FullName
-
-
-
-let from = "/Users/arinokazuma/work/testdata/"
-let repopath = "/Users/arinokazuma/work/testdata"
-
-from.StartsWith(repopath)
-
-(*
-DirectoryInfo dirPrograms = new DirectoryInfo(docPath);
-            DateTime StartOf2009 = new DateTime(2009, 01, 01);
-
-            var dirs = from dir in dirPrograms.EnumerateDirectories(
-*)
-
-
-fi.LastWriteTime
-
-DateTime(637433260866558117L)
-
-(UPath "Uit.fsx")
-
-
-
-
-
-
-(*
-> toBlobInfo repo h;;
-val it : BlobInfo =
-  ManagedFile
-    { Hash =
-            Hash
-              [|254uy; 80uy; 119uy; 45uy; 58uy; 155uy; 121uy; 6uy; 223uy; 27uy;
-                167uy; 189uy; 75uy; 223uy; 52uy; 220uy; 98uy; 114uy; 214uy;
-                109uy; 91uy; 219uy; 217uy; 16uy; 152uy; 153uy; 1uy; 225uy;
-                60uy; 51uy; 26uy; 36uy|]
-      InstancePathList =
-                        [{ Path = UPath "Uit.fsx"
-                           LastModified =
-                                         2020/12/11 23:28:06
-                                           {Date = 2020/12/11 0:00:00;
-                                            Day = 11;
-                                            DayOfWeek = Friday;
-                                            DayOfYear = 346;
-                                            Hour = 23;
-                                            Kind = Unspecified;
-                                            Millisecond = 655;
-                                            Minute = 28;
-                                            Month = 12;
-                                            Second = 6;
-                                            Ticks = 637433260866558117L;
-                                            TimeOfDay = 23:28:06.6558117;
-                                            Year = 2020;}
-                           EntryDate =
-                                      2020/12/11 23:34:30
-                                        {Date = 2020/12/11 0:00:00;
-                                         Day = 11;
-                                         DayOfWeek = Friday;
-                                         DayOfYear = 346;
-                                         Hour = 23;
-                                         Kind = Unspecified;
-                                         Millisecond = 499;
-                                         Minute = 34;
-                                         Month = 12;
-                                         Second = 30;
-                                         Ticks = 637433264704990800L;
-                                         TimeOfDay = 23:34:30.4990800;
-                                         Year = 2020;} }]
-      ReferencePathList = [] }*)
-
-let f = FileInfo("hoge/ika/fuga")
-f.Directory
-f.DirectoryName
-mf2text mf
-
-Int64.Parse("637433260866558117")
-
-["a"; "b"; "c"] |> String.concat "/"
-
-List.append [1; 2; 3] [4; 5; 6]
-
-h
-
-hashPath h
-
-
-
-// let pathToFInfo repo upath =
-
-// let toFInfo repo upath =
-
-// let importOne repo (src: OSPath) (dest: UPath) =
-
-
-
-
-let exists repo upath =
-    let fi = toHash repo upath |> hashPath |> toOSPath repo |> fileinfo
-    fi.Exists
-
-let repo = { Path = OSPath "/Users/arinokazuma/work/uit" }
-
-let h = osPathToHash (OSPath "/Users/arinokazuma/work/uit/usecase.fsx")
-
-hashPath h
-
-
-let fi = fileinfo (OSPath "/Users/arinokazuma/work/uit/usecase.fsx")
-fi.Exists
-
-let fi = fileinfo (OSPath "/Users/arinokazuma/work/uit/.uit/01/23456789.txt")
-fi.Exists
-
-let fi = fileinfo (OSPath "/Users/arinokazuma/work/uit/.uit/01/")
-Directory.CreateDirectory fi.FullName
-fi.FullName
-fi.Create()
-
-fi.Directory
-
-sprintf "%x" h.[0]
-bytes2string h.[1..]
-
-
-let upath path =
-    let canonical =
-        if path = "./" then
-            ""
-        elif path.[0] = '/' then
-            path.[1..]
-        else
-            path
-    UPath canonical
-
-
-
-
-
-let hash = sha.ComputeHash (Encoding.UTF8.GetBytes "Hello World")
-
-hash.Length
-
-let createReader path = new System.IO.StreamReader(path = path)
-
-
-
-
-
-computeHash sha "/Users/arinokazuma/work/uit/usecase.fsx"
-
-
-
-
-
-let toOSPath repo path =
-    let (OSPath bpath) = repo.Path
-    let (UPath value) = path
-    if value = "" then
-        bpath + "/"
-    else
-        Path.Combine(bpath, value)
-
-
-let p = upath "/ika"
-
-toOSPath repo p
-toOSPath repo (upath "./")
-
-Directory.GetFiles(toOSPath repo (upath "./"))
-
-let dir repo path =
-    let ospath = toOSPath repo path
-    Directory.GetFiles ospath
-
-
-dir repo (upath "./")
-
-Path.Combine("hoge", "/ika")
-
-
-// let dir repo path =
-
-
-(*
-let uit1 = UitRepo "/User/local/karino2/disk1/uit1/"
-let uit2 = UitRepo "/User/local/karino2/disk2/uit2/"
-
-let uit1_2 = add "some/relative/file.txt" uit1
-*)
