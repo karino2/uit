@@ -51,6 +51,7 @@ type ImportOne = Repo -> FileInfo -> UPath -> ManagedFile
 type ListHash = Repo -> Hash list
 type ListMF = Repo -> ManagedFile list
 type ListDupMF = Repo -> ManagedFile list
+type ListHashWith = Repo -> string -> Hash list
 
 type SaveBInfo = Repo -> ManagedFile -> unit
 
@@ -238,10 +239,11 @@ let computeFInfoList repo udir =
     |> Seq.map computeFInfo
     |> Seq.toList
 
+let dirRootStr (repo:Repo) =
+    Path.Combine( repo.Path.FullName, ".uit", "dirs")
 
-
-let dirFileFI (repo:Repo) udir =
-    let dirRoot = Path.Combine(repo.Path.FullName, ".uit", "dirs")
+let dirFileFI repo udir =
+    let dirRoot = dirRootStr repo
     let (UDir (UPath relative)) = udir
     let dir = 
         if String.IsNullOrEmpty relative then
@@ -382,18 +384,21 @@ let pe2path pe = pe.Path
 let bi2allpes bi =
     List.append (bi2instances bi) (bi2refs bi)
 
+let removeTxtExt (name:string) = name.Substring(0, name.Length-4) 
+
+let hashRootStr (repo:Repo) =
+    Path.Combine(repo.Path.FullName, ".uit", "hash")
 
 let listHash :ListHash =  fun repo ->
     let dir2hash (di:DirectoryInfo) =        
         let bs = di.Name
-        let removeExt (name:string) = name.Substring(0, name.Length-4) 
         di.EnumerateFiles()
         |> Seq.filter (fun fi->fi.Name.EndsWith(".txt"))
-        |> Seq.map (fun fi->(removeExt fi.Name))
+        |> Seq.map (fun fi->(removeTxtExt fi.Name))
         |> Seq.map (fun rest-> bs+rest)
         |> Seq.map (string2bytes >> Hash)
         |> Seq.toList
-    DirectoryInfo(Path.Combine(repo.Path.FullName, ".uit", "hash")).EnumerateDirectories()
+    DirectoryInfo(hashRootStr(repo)).EnumerateDirectories()
     |> Seq.map dir2hash
     |> Seq.concat
     |> Seq.toList
@@ -408,7 +413,25 @@ let listDupMF : ListDupMF = fun repo->
     listMF repo
     |> List.filter (fun mf-> match mf.InstancePathList with |_::_::_->true|_->false )
 
-// TODO: hash find
+let listHashWith : ListHashWith = fun repo hashstr ->
+    if hashstr.Length < 2 then
+        []
+    else
+        let dirname = hashstr.[0..1]
+        let dirRoot = hashRootStr repo
+        let dir = DirectoryInfo(Path.Combine(dirRoot, dirname))
+        printfn "%A %A" dir dir.Exists
+        if not dir.Exists then
+            []
+        else
+            dir.EnumerateFiles()
+            |> Seq.filter (fun fi -> fi.Name.StartsWith(hashstr.[2..]))
+            |> Seq.map (fun fi-> dirname + (removeTxtExt fi.Name))
+            |> Seq.map (string2bytes >> Hash)
+            |> Seq.toList
+
+
+
 // TODO: toInstance
 // TODO: toReference
 // TODO: uniqIt
@@ -527,4 +550,10 @@ listDupMF repo
 let touch (fi:FileInfo) =
     let fs = fi.Create()
     fs.Close()
+
+
+
+listHashWith repo "20f5"
+
+
 
