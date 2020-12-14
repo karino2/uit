@@ -49,17 +49,21 @@ type PathToBInfo = Repo -> UPath -> BlobInfo
 type ImportOne = Repo -> FileInfo -> UPath -> ManagedFile
 
 type ListHash = Repo -> Hash list
+// 文字列に一致するハッシュの一覧
+type ListHashWith = Repo -> string -> Hash list
 type ListMF = Repo -> ManagedFile list
 type ListDupMF = Repo -> ManagedFile list
-type ListHashWith = Repo -> string -> Hash list
 
 type SaveBInfo = Repo -> ManagedFile -> unit
 
 type InstancePaths = ManagedFile -> PathEntry list
 type ReferencePaths = ManagedFile -> PathEntry list
 
-type ToReference = (Repo * ManagedFile * UPath) -> ManagedFile
-type ToInstance = (Repo * ManagedFile * UPath) -> ManagedFile
+type ToInstanceOne = Repo -> ManagedFile -> UPath -> ManagedFile
+type ToReferenceOne = Repo -> ManagedFile -> UPath -> ManagedFile
+
+type ToReference = Repo -> ManagedFile -> UPath -> ManagedFile
+type ToInstance = Repo -> ManagedFile -> UPath -> ManagedFile
 type UniqIt = Repo -> ManagedFile -> ManagedFile
 
 type Paths = Repo -> Hash -> UPath list
@@ -161,7 +165,7 @@ let parseFileType str =
     | "2" -> Reference
     | _ -> failwith "invalid data"
 
-let toBlobInfo :ToBInfo = fun repo hash ->
+let toBInfo :ToBInfo = fun repo hash ->
     let dir = hashPath hash
     let fi = toFileInfo repo dir
     let toIoR (line: string) =
@@ -281,12 +285,15 @@ let dirInfo :DirInfo = fun repo udir ->
     |> Seq.map toFInfo
     |> Seq.toList
 
-let computeAndSaveDirInfo = fun repo udir ->
-    let fis = computeFInfoList repo udir
+let saveDirFInfos repo udir fis =
     let dirfi = dirFileFI repo udir
     dirfi.Directory |> ensureDir
     finfos2text fis
     |> saveText dirfi
+
+let computeAndSaveDirInfo = fun repo udir ->
+    let fis = computeFInfoList repo udir
+    saveDirFInfos repo udir fis
     fis
 
 let createUPath udir fname =
@@ -296,6 +303,10 @@ let createUPath udir fname =
     else
         UPath (sprintf "%s/%s" dir fname)
 
+let saveMf repo (mf:ManagedFile) =
+    let dest = hashPath mf.Hash
+    saveText (toFileInfo repo dest) (mf2text mf)
+
 let initOneDir :InitOneDir  = fun repo udir ->
     let fis = computeAndSaveDirInfo repo udir
     let fi2pe (fi:FInfo) =
@@ -303,16 +314,13 @@ let initOneDir :InitOneDir  = fun repo udir ->
         {Type=Instance; Path=upath; LastModified=fi.LastModified; EntryDate=fi.EntryDate }
     let fi2binfo (fi:FInfo) =
         let pe = fi2pe fi
-        let bi = toBlobInfo repo fi.Hash
+        let bi = toBInfo repo fi.Hash
         match bi with
         |ManagedFile mf -> {mf with InstancePathList=pe::mf.InstancePathList }
         |UnmanagedFile -> {Hash =  fi.Hash; InstancePathList=[pe]; ReferencePathList=[]}
-    let savemf (mf:ManagedFile) =
-        let dest = hashPath mf.Hash
-        saveText (toFileInfo repo dest) (mf2text mf)
     fis
     |> List.map fi2binfo
-    |> List.iter savemf
+    |> List.iter (saveMf repo)
     fis
 
 let deleteUitDir (repo:Repo) =
@@ -336,16 +344,22 @@ let fileName (UPath upath) =
 let toFInfo :ToFInfo = fun repo upath ->
     let udir = parentDir upath
     let fname = fileName upath
-    let fis =
-        dirInfo repo udir
-        |> List.filter (fun fi -> fi.FName = fname )
-    match fis with
+    let eqname name (fi:FInfo) =
+        name = fi.FName
+    let fis = dirInfo repo udir
+
+    let found = fis |> List.filter (eqname fname)
+    match found with
     | x::_ -> Some x
-    | _-> None
+    | _-> 
+        let found2 = fis |> List.filter (eqname (fname + ".uit"))
+        match found2 with
+        | y::_ -> Some y
+        | _-> None
 
 
 let upath2binfo :UPath2BInfo = fun repo upath ->
-    let fi2bi (fi:FInfo) = toBlobInfo repo fi.Hash
+    let fi2bi (fi:FInfo) = toBInfo repo fi.Hash
 
     toFInfo repo upath
     |> Option.map fi2bi
@@ -405,7 +419,7 @@ let listHash :ListHash =  fun repo ->
 
 let listMF :ListMF = fun repo ->
     listHash repo
-    |> List.map (toBlobInfo repo)
+    |> List.map (toBInfo repo)
     |> List.map (fun bi -> match bi with |ManagedFile mf->mf|UnmanagedFile -> failwith("never reached"))
 
 
@@ -429,6 +443,45 @@ let listHashWith : ListHashWith = fun repo hashstr ->
             |> Seq.map (fun fi-> dirname + (removeTxtExt fi.Name))
             |> Seq.map (string2bytes >> Hash)
             |> Seq.toList
+
+let touch (fi:FileInfo) =
+    let fs = fi.Create()
+    fs.Close()
+
+// without check. internal use only
+let toLinkFile repo upath =
+    let fi = toFileInfo repo upath
+    fi.Delete()
+    FileInfo(fi.FullName+".uit") |> touch 
+    let (UPath v) = upath
+    let newPath = (UPath (v + ".uit"))
+    newPath
+
+let toReferenceOne :ToReferenceOne = fun repo mf upath->
+    let (founds, filtered) = mf.InstancePathList |> List.partition (fun x->x.Path = upath)
+    match founds, filtered with
+    | [found], _::_ ->
+        let parent = parentDir upath
+        let dirinfo = dirInfo repo parent
+        let fname = fileName upath
+        let (thisfinfos, other) = dirinfo |> List.partition (fun finf -> finf.FName = fname)
+        match thisfinfos with
+        |[thisfi] -> 
+            let newpath = toLinkFile repo upath
+            let newname = fileName newpath
+            let newfi = {thisfi with Type=Reference; FName = newname; EntryDate=DateTime.Now}
+            let newfinfos = newfi::other
+            let newpe : PathEntry = {Type=Reference; Path=newpath; LastModified=found.LastModified; EntryDate=newfi.EntryDate}
+            saveDirFInfos repo parent newfinfos
+            let newMf = 
+                { mf with InstancePathList=filtered; ReferencePathList= newpe::mf.ReferencePathList}
+            saveMf repo newMf
+            newMf
+        |_ -> failwith("upath does not in dirs.txt")        
+    | [], _ -> failwith("upath not found")
+    | _, [] -> failwith("only one instance and try changing to reference")
+    | _, _ -> failwith("never happend (like same upath twice, etc.)")
+
 
 
 
@@ -462,7 +515,7 @@ let dest = hashPath mf.Hash
 saveText (toFileInfo repo dest) (mf2text mf)
 
 // read
-toBlobInfo repo h
+toBInfo repo h
 
 
 // 
@@ -547,13 +600,25 @@ listMF repo
 listDupMF repo
 
 
-let touch (fi:FileInfo) =
-    let fs = fi.Create()
-    fs.Close()
+listHashWith repo "2b0b"
+listMF repo
 
 
+//
+//  ToReferenceOne, trial
+//
 
-listHashWith repo "20f5"
+let mikochan = UPath "sns/美子ちゃん.pxv"
+let fi = toFInfo repo mikochan 
+fi.Value.Hash |> hash2string
+fi.Value.Hash
+
+toBInfo repo fi.Value.Hash
+
+let dups = listDupMF repo
 
 
+toReferenceOne repo dups.Head (UPath "sns/美子ちゃん.pxv")
 
+
+toFInfo repo mikochan
