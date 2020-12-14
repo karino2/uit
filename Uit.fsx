@@ -42,32 +42,6 @@ type BlobInfo =
 | ManagedFile of ManagedFile
 | UnmanagedFile
 
-type ComputeHash = Repo -> UPath -> Hash
-type ToBInfo = Repo -> Hash -> BlobInfo
-type PathToBInfo = Repo -> UPath -> BlobInfo
-
-type ImportOne = Repo -> FileInfo -> UPath -> ManagedFile
-
-type ListHash = Repo -> Hash list
-// 文字列に一致するハッシュの一覧
-type ListHashWith = Repo -> string -> Hash list
-type ListMF = Repo -> ManagedFile list
-type ListDupMF = Repo -> ManagedFile list
-
-type SaveBInfo = Repo -> ManagedFile -> unit
-
-type InstancePaths = ManagedFile -> PathEntry list
-type ReferencePaths = ManagedFile -> PathEntry list
-
-type ToInstanceOne = Repo -> ManagedFile -> UPath -> ManagedFile
-type ToReferenceOne = Repo -> ManagedFile -> UPath -> ManagedFile
-
-type ToReference = Repo -> ManagedFile -> UPath -> ManagedFile
-type ToInstance = Repo -> ManagedFile -> UPath -> ManagedFile
-type UniqIt = Repo -> ManagedFile -> ManagedFile
-
-type Paths = Repo -> Hash -> UPath list
-
 // ".uit/dirs/"下にファイルのパスに対応した情報がある。
 // dirsの下にディレクトリ構造そのままコピーしたディレクトリ構造があり、
 // 目的のディレクトリエントリにはdir.txtというファイルがある。
@@ -85,6 +59,47 @@ type FInfo = {
     EntryDate: DateTime
 }
 
+
+type ComputeHash = Repo -> UPath -> Hash
+type ToBInfo = Repo -> Hash -> BlobInfo
+type PathToBInfo = Repo -> UPath -> BlobInfo
+
+type ImportOne = Repo -> FileInfo -> UPath -> ManagedFile
+
+type ListHash = Repo -> Hash list
+// 文字列に一致するハッシュの一覧
+type ListHashWith = Repo -> string -> Hash list
+type ListMF = Repo -> ManagedFile list
+type ListDupMF = Repo -> ManagedFile list
+
+type SaveBInfo = Repo -> ManagedFile -> unit
+
+type InstancePaths = ManagedFile -> PathEntry list
+type ReferencePaths = ManagedFile -> PathEntry list
+
+// 指定されたUPathをinstanceに。他のinstanceファイルはinstanceのまま。
+type ToInstanceOne = Repo -> ManagedFile -> UPath -> ManagedFile
+// 指定されたUPathをRefeerenceに。最後の一つをreferenceにしようとする時はエラー。
+type ToReferenceOne = Repo -> ManagedFile -> UPath -> ManagedFile
+
+// 指定されたUPathをinstanceに。
+// 他のインスタンスは全てreferenceにする。
+type ToInstance = Repo -> ManagedFile -> UPath -> ManagedFile
+
+// 重複したinstanceは全てreferenceにしてinstanceは一つだけにする。
+type UniqIt = Repo -> ManagedFile -> ManagedFile
+
+// 指定したディレクトリ下のファイルに対してToInstanceを呼び出す
+type ConvDirInstance = Repo -> UDir -> FInfo list
+
+type Paths = Repo -> Hash -> UPath list
+
+type SaveText = FileInfo -> string -> unit
+
+//
+// dirs下関連
+//
+
 // Repo下のファイルの.uit/hash と .uit/dirsを作る。
 // まだhashなどが存在しない状態で行われるのでImportとは処理を分けておく
 // .uit/dirsを作る都合でファイル単位じゃなくてディレクトリ単位
@@ -100,7 +115,6 @@ type UPath2BInfo  = Repo -> UPath -> BlobInfo option
 type FInfos2Text = FInfo list -> string
 type ManagedFileToText = ManagedFile -> string
 
-type SaveText = FileInfo -> string -> unit
 
 //
 // Implementation
@@ -340,6 +354,7 @@ let fileName (UPath upath) =
     let comps = upath.Split('/')
     comps.[comps.Length-1]
 
+let LinkExt = ".uitlnk"
 
 let toFInfo :ToFInfo = fun repo upath ->
     let udir = parentDir upath
@@ -352,7 +367,7 @@ let toFInfo :ToFInfo = fun repo upath ->
     match found with
     | x::_ -> Some x
     | _-> 
-        let found2 = fis |> List.filter (eqname (fname + ".uit"))
+        let found2 = fis |> List.filter (eqname (fname + LinkExt))
         match found2 with
         | y::_ -> Some y
         | _-> None
@@ -448,13 +463,14 @@ let touch (fi:FileInfo) =
     let fs = fi.Create()
     fs.Close()
 
+
 // without check. internal use only
 let toLinkFile repo upath =
     let fi = toFileInfo repo upath
     fi.Delete()
-    FileInfo(fi.FullName+".uit") |> touch 
+    FileInfo(fi.FullName+LinkExt) |> touch 
     let (UPath v) = upath
-    let newPath = (UPath (v + ".uit"))
+    let newPath = (UPath (v + LinkExt))
     newPath
 
 let toReferenceOne :ToReferenceOne = fun repo mf upath->
@@ -486,7 +502,6 @@ let toReferenceOne :ToReferenceOne = fun repo mf upath->
 
 
 // TODO: toInstance
-// TODO: toReference
 // TODO: uniqIt
 
 
@@ -608,6 +623,8 @@ listMF repo
 //  ToReferenceOne, trial
 //
 
+init repo
+
 let mikochan = UPath "sns/美子ちゃん.pxv"
 let fi = toFInfo repo mikochan 
 fi.Value.Hash |> hash2string
@@ -617,8 +634,27 @@ toBInfo repo fi.Value.Hash
 
 let dups = listDupMF repo
 
-
 toReferenceOne repo dups.Head (UPath "sns/美子ちゃん.pxv")
 
 
 toFInfo repo mikochan
+
+(*
+想定するコマンドラインの使い方を考える。
+
+cd repodir
+uit init
+uit lsdup
+uit uniqit -all
+uit inst study/language/
+uit lsh
+uit info 2b0b
+uit inst sns/img1.png
+uit ls sns/img1.png
+
+// すでにあったらrefとしてインポート。
+uit import /somewhere/file.mp3 music/file.mp3
+
+uit mv sutudy/language/roman study/roman
+
+*)
