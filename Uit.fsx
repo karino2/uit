@@ -17,11 +17,15 @@ type FileType =
 | Instance
 | Reference
 
-type PathEntry = {
+type Entry = {
     Type: FileType
-    Path : UPath
     LastModified : DateTime
     EntryDate: DateTime
+}
+
+type PathEntry = {
+    Entry: Entry
+    Path : UPath
 }
 
 // .uit/hash/xx/yyyyyyyyyyy.txt にかかれている情報
@@ -52,11 +56,9 @@ type BlobInfo =
 // となっている。tpはinstanceなら1, referenceなら2
 // EntryDateはhash下と同じ物を使う。
 type FInfo = {
-    Type: FileType
+    Entry : Entry
     Hash: Hash
     FName: string
-    LastModified: DateTime
-    EntryDate: DateTime
 }
 
 
@@ -157,7 +159,7 @@ let hashPath hash =
 let mf2text :ManagedFileToText = fun mf->
     let totext tp (pe: PathEntry) =
         let (UPath path) = pe.Path
-        sprintf "%d\t%d\t%d\t%s\n"  tp pe.LastModified.Ticks pe.EntryDate.Ticks path
+        sprintf "%d\t%d\t%d\t%s\n"  tp pe.Entry.LastModified.Ticks pe.Entry.EntryDate.Ticks path
     let instances = mf.InstancePathList |> List.map (totext 1)
     let refs = mf.ReferencePathList |> List.map (totext 2)
     List.append instances refs |> List.reduce (+)
@@ -185,11 +187,11 @@ let toBInfo :ToBInfo = fun repo hash ->
     let toIoR (line: string) =
         let cells = line.Split('\t', 4)
         let tp = parseFileType cells.[0]
-        {Type = tp; Path=(UPath cells.[3]); LastModified=DateTime(Int64.Parse cells.[1]); EntryDate=DateTime(Int64.Parse cells.[2])}
+        {Path=(UPath cells.[3]); Entry={Type = tp; LastModified=DateTime(Int64.Parse cells.[1]); EntryDate=DateTime(Int64.Parse cells.[2])}}
     if fi.Exists then
         let onlyIorR icase rcase =
             fun (m:PathEntry) ->
-                match m.Type with
+                match m.Entry.Type with
                 |Instance _-> icase
                 |Reference _ -> rcase
         let ret = 
@@ -235,14 +237,14 @@ let createUDir repo (abspath:string) =
 
 let computeFInfo fi =
     let hash = computeFileHash fi
-    {Type=Instance; Hash = hash; FName=fi.Name; LastModified=fi.LastWriteTime; EntryDate=DateTime.Now}
+    {Hash = hash; FName=fi.Name; Entry={Type=Instance; LastModified=fi.LastWriteTime; EntryDate=DateTime.Now}}
 
 let finfo2text finfo =
     let fmt tp (lastmod:DateTime) (entdt:DateTime) hash fname =
         sprintf "%d\t%d\t%d\t%s\t%s" tp lastmod.Ticks entdt.Ticks (hash2string hash) fname
-    let format tp pe =
-        fmt tp pe.LastModified pe.EntryDate pe.Hash pe.FName
-    match finfo.Type with
+    let format tp finfo =
+        fmt tp finfo.Entry.LastModified finfo.Entry.EntryDate finfo.Hash finfo.FName
+    match finfo.Entry.Type with
     | Instance -> format 1 finfo
     | Reference -> format 2 finfo
 
@@ -293,7 +295,7 @@ let dirInfo :DirInfo = fun repo udir ->
             let last = DateTime(Int64.Parse laststr)
             let entdt = DateTime(Int64.Parse entdtstr)
             let tp = parseFileType tpstr
-            {Type=tp;Hash = hash; FName = fname; LastModified = last; EntryDate = entdt}
+            {Hash = hash; FName = fname; Entry={Type=tp;LastModified = last; EntryDate = entdt}}
         |_ -> failwith "corrupted dir.txt"
     File.ReadLines(fi.FullName)
     |> Seq.map toFInfo
@@ -321,13 +323,14 @@ let saveMf repo (mf:ManagedFile) =
     let dest = hashPath mf.Hash
     saveText (toFileInfo repo dest) (mf2text mf)
 
+let finfo2pe udir (fi:FInfo) =
+    let upath = createUPath udir fi.FName
+    {Path=upath; Entry=fi.Entry}
+
 let initOneDir :InitOneDir  = fun repo udir ->
     let fis = computeAndSaveDirInfo repo udir
-    let fi2pe (fi:FInfo) =
-        let upath = createUPath udir fi.FName
-        {Type=Instance; Path=upath; LastModified=fi.LastModified; EntryDate=fi.EntryDate }
     let fi2binfo (fi:FInfo) =
-        let pe = fi2pe fi
+        let pe = finfo2pe udir fi
         let bi = toBInfo repo fi.Hash
         match bi with
         |ManagedFile mf -> {mf with InstancePathList=pe::mf.InstancePathList }
@@ -413,7 +416,14 @@ let pe2path pe = pe.Path
 let bi2allpes bi =
     List.append (bi2instances bi) (bi2refs bi)
 
-let removeTxtExt (name:string) = name.Substring(0, name.Length-4) 
+let trimEnd (pat:string) (target:string) =
+    if target.EndsWith(pat) then
+        target.Remove(target.LastIndexOf pat)
+    else
+        target
+
+
+let removeTxtExt (name:string) = trimEnd ".txt" name
 
 let hashRootStr (repo:Repo) =
     Path.Combine(repo.Path.FullName, ".uit", "hash")
@@ -463,15 +473,25 @@ let touch (fi:FileInfo) =
     let fs = fi.Create()
     fs.Close()
 
+let toLinkPath upath =
+    let (UPath v) = upath
+    (UPath (v + LinkExt))
+
+let toInstPath upath =
+    let (UPath v) = upath
+    (UPath (trimEnd LinkExt v))
+
+let createEmpty repo upath =
+    let fi = toFileInfo repo upath
+    touch fi
+    upath
 
 // without check. internal use only
 let toLinkFile repo upath =
     let fi = toFileInfo repo upath
     fi.Delete()
-    FileInfo(fi.FullName+LinkExt) |> touch 
-    let (UPath v) = upath
-    let newPath = (UPath (v + LinkExt))
-    newPath
+    toLinkPath upath
+    |> createEmpty repo
 
 let toReferenceOne :ToReferenceOne = fun repo mf upath->
     let (founds, filtered) = mf.InstancePathList |> List.partition (fun x->x.Path = upath)
@@ -485,9 +505,9 @@ let toReferenceOne :ToReferenceOne = fun repo mf upath->
         |[thisfi] -> 
             let newpath = toLinkFile repo upath
             let newname = fileName newpath
-            let newfi = {thisfi with Type=Reference; FName = newname; EntryDate=DateTime.Now}
+            let newfi = {thisfi with FName = newname; Entry={thisfi.Entry with Type=Reference; EntryDate=DateTime.Now}}
             let newfinfos = newfi::other
-            let newpe : PathEntry = {Type=Reference; Path=newpath; LastModified=found.LastModified; EntryDate=newfi.EntryDate}
+            let newpe = {Path=newpath; Entry=newfi.Entry}
             saveDirFInfos repo parent newfinfos
             let newMf = 
                 { mf with InstancePathList=filtered; ReferencePathList= newpe::mf.ReferencePathList}
@@ -498,21 +518,84 @@ let toReferenceOne :ToReferenceOne = fun repo mf upath->
     | _, [] -> failwith("only one instance and try changing to reference")
     | _, _ -> failwith("never happend (like same upath twice, etc.)")
 
+
+// instanceなPEsをreferenceにする。
+// instanceを一つは残すのは呼ぶ側の責任
+let makePEListRefs repo mf (pelist:PathEntry list) =
+    pelist |> List.map (fun pe->pe.Path) |> List.fold (toReferenceOne repo) mf
+
+
 let uniqIt : UniqIt = fun repo mf ->
     match mf.InstancePathList with
     |first::rest ->
-        rest |> List.map (fun pe->pe.Path) |> List.fold (toReferenceOne repo) mf
+        makePEListRefs repo mf rest
     |_ -> mf
 
 
-// TODO: toInstance
 
+let peEqual upath pe =
+    upath = pe.Path || (toLinkPath upath) = pe.Path
+
+let moveFile repo upath1 upath2 =
+    let fi1 = toFileInfo repo upath1
+    let fi2 = toFileInfo repo upath2
+    File.Move(fi1.FullName, fi2.FullName)    
+
+let removeFile repo upath =
+    let fi = toFileInfo repo upath
+    File.Delete(fi.FullName)
+
+let pe2finfo hash (pe:PathEntry) =
+    {Hash=hash; FName=(fileName pe.Path); Entry=pe.Entry}
+
+let swapInstance repo instPath refPath =
+    removeFile repo refPath
+    let newInstPath = toInstPath refPath
+    moveFile repo instPath newInstPath
+    let newLnkPath = (toLinkPath instPath)
+    createEmpty repo newLnkPath |> ignore
+    newLnkPath, newInstPath
+
+let updateDirInfo repo udir newFi =
+    let rest =
+        dirInfo repo udir
+        |> List.filter (fun finfo-> finfo.Hash <> newFi.Hash)
+    let newFis = newFi::rest
+    saveDirFInfos repo udir newFis
+    newFis
+
+
+
+let toInstance : ToInstance = fun repo mf target ->
+    // hoge.uitlnk を渡すと、hoge.uitlnk.uitlnkにもマッチしちゃうが、まぁいいでしょう。
+    let founds, rest =
+         mf.ReferencePathList |> List.partition (peEqual target)
+    match founds with
+    |[found] ->
+        let headInst = mf.InstancePathList.Head
+        let (headLnkPath, newInstPath) = swapInstance repo headInst.Path target
+
+        let newpeInst = {found with Path=newInstPath; Entry={found.Entry with Type=Instance; EntryDate=DateTime.Now}}
+        let newpeRef = {headInst with Path=headLnkPath; Entry={headInst.Entry with Type=Reference; EntryDate=DateTime.Now}}
+        let newmf = {mf with InstancePathList=newpeInst::mf.InstancePathList.Tail; ReferencePathList=newpeRef::rest }
+        saveMf repo newmf
+
+        let newFInst = pe2finfo mf.Hash newpeInst
+        let newFRef = pe2finfo mf.Hash newpeRef
+        updateDirInfo repo (parentDir target) newFInst |> ignore
+        updateDirInfo repo (parentDir headLnkPath) newFRef |> ignore
+
+        newmf
+    |_ -> 
+        printfn "upath (%A) is not instance" target
+        mf
 
 //
 // Trial code
 //
 
 let repo = { Path = DirectoryInfo "/Users/arinokazuma/work/testdata" }
+let mikochan = UPath "sns/美子ちゃん.pxv"
 
 //
 // Init
@@ -523,7 +606,6 @@ init repo
 //
 // upath2binfo
 //
-let mikochan = UPath "sns/美子ちゃん.pxv"
 
 upath2binfo repo mikochan
 
@@ -574,19 +656,42 @@ uniqIt repo dups.Head
 listDupMF repo
 
 
-let fi = toFInfo repo mikochan 
-fi.Value.Hash |> hash2string
-fi.Value.Hash
+let dispMf (mf:ManagedFile) =
+    printfn "Hash: %s" (hash2string mf.Hash)
+    printf "Inst: "
+    mf.InstancePathList |> List.iter (fun pe->printf "%A " pe.Path)
+    printf "\nRefs: "
+    mf.ReferencePathList |> List.iter (fun pe->printf "%A " pe.Path)
+    printfn ""
 
-toBInfo repo fi.Value.Hash
+let lsa repo upath =
+    let opbinfo = toFInfo repo upath
+                |> Option.map (fun fi->fi.Hash)
+                |> Option.map (toBInfo repo)
+    match opbinfo with
+    | (Some (ManagedFile mf)) -> dispMf mf
+    | _ -> ()
 
-toFInfo repo mikochan
-|> Option.map (fun fi->fi.Hash)
-|> Option.map hash2string
+let lsmf repo upath =
+    let opbinfo = toFInfo repo upath
+                |> Option.map (fun fi->fi.Hash)
+                |> Option.map (toBInfo repo)
+    match opbinfo with
+    | (Some (ManagedFile mf)) -> mf
+    | _ -> failwith("not managed path")
 
-toFInfo repo mikochan
-|> Option.map (fun fi->fi.Hash)
-|> Option.map (toBInfo repo)
+
+let mf = lsmf repo (UPath "imgs/美子ちゃん.pxv")
+
+toInstance repo mf (UPath "imgs/美子ちゃん.pxv.uitlnk")
+
+lsa repo (UPath "imgs/美子ちゃん.pxv")
+
+toInstance repo mf (UPath "sns/美子ちゃん.pxv.uitlnk")
+
+lsa repo (UPath "imgs/美子ちゃん.pxv")
+
+mf
 
 
 (*
