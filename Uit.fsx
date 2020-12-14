@@ -498,11 +498,14 @@ let toReferenceOne :ToReferenceOne = fun repo mf upath->
     | _, [] -> failwith("only one instance and try changing to reference")
     | _, _ -> failwith("never happend (like same upath twice, etc.)")
 
-
+let uniqIt : UniqIt = fun repo mf ->
+    match mf.InstancePathList with
+    |first::rest ->
+        rest |> List.map (fun pe->pe.Path) |> List.fold (toReferenceOne repo) mf
+    |_ -> mf
 
 
 // TODO: toInstance
-// TODO: uniqIt
 
 
 //
@@ -566,18 +569,25 @@ listMF repo
 // init repo
 // let mikochan = UPath "sns/美子ちゃん.pxv"
 
+let dups = listDupMF repo
+uniqIt repo dups.Head
+listDupMF repo
+
+
 let fi = toFInfo repo mikochan 
 fi.Value.Hash |> hash2string
 fi.Value.Hash
 
 toBInfo repo fi.Value.Hash
 
-let dups = listDupMF repo
-
-toReferenceOne repo dups.Head (UPath "sns/美子ちゃん.pxv")
-
+toFInfo repo mikochan
+|> Option.map (fun fi->fi.Hash)
+|> Option.map hash2string
 
 toFInfo repo mikochan
+|> Option.map (fun fi->fi.Hash)
+|> Option.map (toBInfo repo)
+
 
 (*
 想定するコマンドラインの使い方を考える。
