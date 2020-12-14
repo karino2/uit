@@ -12,19 +12,16 @@ type UDir = UDir of UPath
 // このPathは最後のスラッシュは含まない
 type Repo = { Path: DirectoryInfo }
 
-type PathEntry = {
-    Path : UPath
-    LastModified : DateTime
-    EntryDate: DateTime
-}
 
 type FileType =
 | Instance
 | Reference
 
-type TypedPathEntry = {
+type PathEntry = {
     Type: FileType
-    PathEntry: PathEntry
+    Path : UPath
+    LastModified : DateTime
+    EntryDate: DateTime
 }
 
 // .uit/hash/xx/yyyyyyyyyyy.txt にかかれている情報
@@ -75,15 +72,12 @@ type Paths = Repo -> Hash -> UPath list
 // tp LastModified EntryDate Hash ファイル名
 // となっている。tpはinstanceなら1, referenceなら2
 // EntryDateはhash下と同じ物を使う。
-type FInfoEntry = {
+type FInfo = {
+    Type: FileType
     Hash: Hash
     FName: string
     LastModified: DateTime
     EntryDate: DateTime
-}
-type FInfo = {
-    Type: FileType
-    Entry: FInfoEntry
 }
 
 // Repo下のファイルの.uit/hash と .uit/dirsを作る。
@@ -169,24 +163,21 @@ let parseFileType str =
 let toBlobInfo :ToBInfo = fun repo hash ->
     let dir = hashPath hash
     let fi = toFileInfo repo dir
-    let toPE (cells : string array) =
-        {Path=(UPath cells.[2]); LastModified=DateTime(Int64.Parse cells.[0]); EntryDate=DateTime(Int64.Parse cells.[1])}
     let toIoR (line: string) =
         let cells = line.Split('\t', 4)
         let tp = parseFileType cells.[0]
-        {Type = tp; PathEntry = (toPE cells.[1..])}
+        {Type = tp; Path=(UPath cells.[3]); LastModified=DateTime(Int64.Parse cells.[1]); EntryDate=DateTime(Int64.Parse cells.[2])}
     if fi.Exists then
         let onlyIorR icase rcase =
-            fun (m:TypedPathEntry) ->
+            fun (m:PathEntry) ->
                 match m.Type with
                 |Instance _-> icase
                 |Reference _ -> rcase
-        let inside tpe = tpe.PathEntry
         let ret = 
             File.ReadLines fi.FullName
             |> Seq.map toIoR
-        let is = ret |> Seq.filter (onlyIorR true false) |> Seq.map inside |> Seq.toList
-        let rs = ret |> Seq.filter (onlyIorR false true) |> Seq.map inside |> Seq.toList
+        let is = ret |> Seq.filter (onlyIorR true false) |> Seq.toList
+        let rs = ret |> Seq.filter (onlyIorR false true) |> Seq.toList
         ManagedFile { Hash = hash; InstancePathList=is; ReferencePathList=rs }
     else
         UnmanagedFile
@@ -225,7 +216,7 @@ let createUDir repo (abspath:string) =
 
 let computeFInfo fi =
     let hash = computeFileHash fi
-    {Type=Instance; Entry={Hash = hash; FName=fi.Name; LastModified=fi.LastWriteTime; EntryDate=DateTime.Now}}
+    {Type=Instance; Hash = hash; FName=fi.Name; LastModified=fi.LastWriteTime; EntryDate=DateTime.Now}
 
 let finfo2text finfo =
     let fmt tp (lastmod:DateTime) (entdt:DateTime) hash fname =
@@ -233,8 +224,8 @@ let finfo2text finfo =
     let format tp pe =
         fmt tp pe.LastModified pe.EntryDate pe.Hash pe.FName
     match finfo.Type with
-    | Instance -> format 1 finfo.Entry
-    | Reference -> format 2 finfo.Entry
+    | Instance -> format 1 finfo
+    | Reference -> format 2 finfo
 
 let finfos2text finfos =
     finfos
@@ -281,9 +272,8 @@ let dirInfo :DirInfo = fun repo udir ->
             let hash = Hash (string2bytes hashstr)
             let last = DateTime(Int64.Parse laststr)
             let entdt = DateTime(Int64.Parse entdtstr)
-            let fent = {Hash = hash; FName = fname; LastModified = last; EntryDate = entdt}
             let tp = parseFileType tpstr
-            {Type=tp; Entry = fent}
+            {Type=tp;Hash = hash; FName = fname; LastModified = last; EntryDate = entdt}
         |_ -> failwith "corrupted dir.txt"
     File.ReadLines(fi.FullName)
     |> Seq.map toFInfo
@@ -306,21 +296,20 @@ let createUPath udir fname =
 
 let initOneDir :InitOneDir  = fun repo udir ->
     let fis = computeAndSaveDirInfo repo udir
-    let finfo2fie finfo = finfo.Entry
-    let fi2pe (fie:FInfoEntry) =
-        let upath = createUPath udir fie.FName
-        {Path=upath; LastModified=fie.LastModified; EntryDate=fie.EntryDate }
-    let fi2binfo (fie:FInfoEntry) =
-        let pe = fi2pe fie
-        let bi = toBlobInfo repo fie.Hash
+    let fi2pe (fi:FInfo) =
+        let upath = createUPath udir fi.FName
+        {Type=Instance; Path=upath; LastModified=fi.LastModified; EntryDate=fi.EntryDate }
+    let fi2binfo (fi:FInfo) =
+        let pe = fi2pe fi
+        let bi = toBlobInfo repo fi.Hash
         match bi with
         |ManagedFile mf -> {mf with InstancePathList=pe::mf.InstancePathList }
-        |UnmanagedFile -> {Hash =  fie.Hash; InstancePathList=[pe]; ReferencePathList=[]}
+        |UnmanagedFile -> {Hash =  fi.Hash; InstancePathList=[pe]; ReferencePathList=[]}
     let savemf (mf:ManagedFile) =
         let dest = hashPath mf.Hash
         saveText (toFileInfo repo dest) (mf2text mf)
     fis
-    |> List.map (finfo2fie >> fi2binfo)
+    |> List.map fi2binfo
     |> List.iter savemf
     fis
 
@@ -347,14 +336,14 @@ let toFInfo :ToFInfo = fun repo upath ->
     let fname = fileName upath
     let fis =
         dirInfo repo udir
-        |> List.filter (fun fi -> fi.Entry.FName = fname )
+        |> List.filter (fun fi -> fi.FName = fname )
     match fis with
     | x::_ -> Some x
     | _-> None
 
 
 let upath2binfo :UPath2BInfo = fun repo upath ->
-    let fi2bi (fi:FInfo) = toBlobInfo repo fi.Entry.Hash
+    let fi2bi (fi:FInfo) = toBlobInfo repo fi.Hash
 
     toFInfo repo upath
     |> Option.map fi2bi
@@ -441,7 +430,7 @@ let h = computeFileHash (FileInfo "/Users/arinokazuma/work/testdata/Uit.fsx")
 let fi = FileInfo("/Users/arinokazuma/work/testdata/Uit.fsx")
 let entryCreated = DateTime.Now
 
-let pe = {Path=(UPath "Uit.fsx"); LastModified=fi.LastWriteTime; EntryDate=entryCreated }
+let pe = {Type=Instance; Path=(UPath "Uit.fsx"); LastModified=fi.LastWriteTime; EntryDate=entryCreated }
 let mf = {Hash= h; InstancePathList=[pe]; ReferencePathList=[]}
 
 mf2text mf
