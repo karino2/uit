@@ -511,76 +511,16 @@ let toReferenceOne :ToReferenceOne = fun repo mf upath->
 
 let repo = { Path = DirectoryInfo "/Users/arinokazuma/work/testdata" }
 
-
-// 
-// create MangedFile and save at .uit/hash
-//
-
-let h = computeFileHash (FileInfo "/Users/arinokazuma/work/testdata/Uit.fsx")
-
-let fi = FileInfo("/Users/arinokazuma/work/testdata/Uit.fsx")
-let entryCreated = DateTime.Now
-
-let pe = {Type=Instance; Path=(UPath "Uit.fsx"); LastModified=fi.LastWriteTime; EntryDate=entryCreated }
-let mf = {Hash= h; InstancePathList=[pe]; ReferencePathList=[]}
-
-mf2text mf
-
-let dest = hashPath mf.Hash
-saveText (toFileInfo repo dest) (mf2text mf)
-
-// read
-toBInfo repo h
-
-
-// 
-// create FInfo list and save at .uit/dirs
-//
-
-let root = createUDir repo "/Users/arinokazuma/work/testdata/"
-
-let finfos = computeFInfoList repo root
-
-let dirfi = dirFileFI repo root
-dirfi.Directory |> ensureDir
-
-finfos2text finfos
-|> saveText dirfi
-
-
-// read
-dirInfo repo root
-
-
-//
-// InitOneDir
-//
-
-deleteUitDir repo
-
-initOneDir repo root
-
-let sns = createUDir repo "/Users/arinokazuma/work/testdata/sns/"
-let imgs = createUDir repo "/Users/arinokazuma/work/testdata/imgs/"
-
-let snsfis = initOneDir repo sns
-let imgfis = initOneDir repo imgs
-
-
-// read
-let mikochan = UPath "sns/美子ちゃん.pxv"
-toFInfo repo mikochan 
-
 //
 // Init
 //
 
-deleteUitDir repo
 init repo
 
 //
 // upath2binfo
 //
+let mikochan = UPath "sns/美子ちゃん.pxv"
 
 upath2binfo repo mikochan
 
@@ -623,9 +563,9 @@ listMF repo
 //  ToReferenceOne, trial
 //
 
-init repo
+// init repo
+// let mikochan = UPath "sns/美子ちゃん.pxv"
 
-let mikochan = UPath "sns/美子ちゃん.pxv"
 let fi = toFInfo repo mikochan 
 fi.Value.Hash |> hash2string
 fi.Value.Hash
@@ -645,16 +585,28 @@ toFInfo repo mikochan
 cd repodir
 uit init
 uit lsdup
+uit uniqit mp3/
 uit uniqit -all
 uit inst study/language/
 uit lsh
 uit info 2b0b
 uit inst sns/img1.png
+
 uit ls sns/img1.png
+
+// -lで他のリンク先の情報も見る
+uit ls -l sns/img1.png
 
 // すでにあったらrefとしてインポート。
 uit import /somewhere/file.mp3 music/file.mp3
 
+// .uit/dirs や .uit/hash を更新しつつ移動
 uit mv sutudy/language/roman study/roman
+
+// refとしてコピーして実体はコピーしない
+uit cp mp3/roman/somefile.mp3 study/roman/somefile.mp3
+
+// -iで新しく追加した方をinstanceにする
+uit cp -i mp3/roman/somefile.mp3 study/roman/somefile.mp3
 
 *)
