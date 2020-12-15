@@ -15,7 +15,7 @@ type Repo = { Path: DirectoryInfo }
 
 type FileType =
 | Instance
-| Reference
+| Link
 
 type Entry = {
     Type: FileType
@@ -35,11 +35,11 @@ type PathEntry = {
 // t LastModified EntryDate   fname
 // の形式で、LastModifiedは対応するblobをimportした時のfileのlastmodified。
 // EntryDateはこの行を更新した時の日時
-// tはinstanceなら1、referenceなら2。
+// tはinstanceなら1、linkなら2。
 type ManagedFile = { 
     Hash : Hash
     InstancePathList : PathEntry list
-    ReferencePathList : PathEntry list
+    LinkPathList : PathEntry list
 }
 
 type BlobInfo = 
@@ -53,7 +53,7 @@ type BlobInfo =
 // .uit/dirs/hoge/ika/dir.txt にある。
 // このdir.txtの中身の各行はFInfoを表し、
 // tp LastModified EntryDate Hash ファイル名
-// となっている。tpはinstanceなら1, referenceなら2
+// となっている。tpはinstanceなら1, linkなら2
 // EntryDateはhash下と同じ物を使う。
 type FInfo = {
     Entry : Entry
@@ -77,18 +77,18 @@ type ListDupMF = Repo -> ManagedFile list
 type SaveBInfo = Repo -> ManagedFile -> unit
 
 type InstancePaths = ManagedFile -> PathEntry list
-type ReferencePaths = ManagedFile -> PathEntry list
+type LinkPaths = ManagedFile -> PathEntry list
 
 // 指定されたUPathをinstanceに。他のinstanceファイルはinstanceのまま。
 type ToInstanceOne = Repo -> ManagedFile -> UPath -> ManagedFile
-// 指定されたUPathをRefeerenceに。最後の一つをreferenceにしようとする時はエラー。
-type ToReferenceOne = Repo -> ManagedFile -> UPath -> ManagedFile
+// 指定されたUPathをRefeerenceに。最後の一つをlinkにしようとする時はエラー。
+type ToLinkOne = Repo -> ManagedFile -> UPath -> ManagedFile
 
 // 指定されたUPathをinstanceに。
-// 他のインスタンスは全てreferenceにする。
+// 他のインスタンスは全てlinkにする。
 type ToInstance = Repo -> ManagedFile -> UPath -> ManagedFile
 
-// 重複したinstanceは全てreferenceにしてinstanceは一つだけにする。
+// 重複したinstanceは全てlinkにしてinstanceは一つだけにする。
 type UniqIt = Repo -> ManagedFile -> ManagedFile
 
 // 指定したディレクトリ下のファイルに対してToInstanceを呼び出す
@@ -161,8 +161,8 @@ let mf2text :ManagedFileToText = fun mf->
         let (UPath path) = pe.Path
         sprintf "%d\t%d\t%d\t%s\n"  tp pe.Entry.LastModified.Ticks pe.Entry.EntryDate.Ticks path
     let instances = mf.InstancePathList |> List.map (totext 1)
-    let refs = mf.ReferencePathList |> List.map (totext 2)
-    List.append instances refs |> List.reduce (+)
+    let links = mf.LinkPathList |> List.map (totext 2)
+    List.append instances links |> List.reduce (+)
 
 
 let ensureDir (di: DirectoryInfo) =
@@ -178,7 +178,7 @@ let saveText :SaveText = fun fi text ->
 let parseFileType str =
     match str with
     | "1" -> Instance
-    | "2" -> Reference
+    | "2" -> Link
     | _ -> failwith "invalid data"
 
 let toBInfo :ToBInfo = fun repo hash ->
@@ -193,13 +193,13 @@ let toBInfo :ToBInfo = fun repo hash ->
             fun (m:PathEntry) ->
                 match m.Entry.Type with
                 |Instance _-> icase
-                |Reference _ -> rcase
+                |Link _ -> rcase
         let ret = 
             File.ReadLines fi.FullName
             |> Seq.map toIoR
         let is = ret |> Seq.filter (onlyIorR true false) |> Seq.toList
         let rs = ret |> Seq.filter (onlyIorR false true) |> Seq.toList
-        ManagedFile { Hash = hash; InstancePathList=is; ReferencePathList=rs }
+        ManagedFile { Hash = hash; InstancePathList=is; LinkPathList=rs }
     else
         UnmanagedFile
 
@@ -246,7 +246,7 @@ let finfo2text finfo =
         fmt tp finfo.Entry.LastModified finfo.Entry.EntryDate finfo.Hash finfo.FName
     match finfo.Entry.Type with
     | Instance -> format 1 finfo
-    | Reference -> format 2 finfo
+    | Link -> format 2 finfo
 
 let finfos2text finfos =
     finfos
@@ -334,7 +334,7 @@ let initOneDir :InitOneDir  = fun repo udir ->
         let bi = toBInfo repo fi.Hash
         match bi with
         |ManagedFile mf -> {mf with InstancePathList=pe::mf.InstancePathList }
-        |UnmanagedFile -> {Hash =  fi.Hash; InstancePathList=[pe]; ReferencePathList=[]}
+        |UnmanagedFile -> {Hash =  fi.Hash; InstancePathList=[pe]; LinkPathList=[]}
     fis
     |> List.map fi2binfo
     |> List.iter (saveMf repo)
@@ -406,15 +406,15 @@ let bi2instances bi =
     | ManagedFile mf-> mf.InstancePathList
     | UnmanagedFile ->[]
 
-let bi2refs bi =
+let bi2links bi =
     match bi with
-    | ManagedFile mf-> mf.ReferencePathList
+    | ManagedFile mf-> mf.LinkPathList
     | UnmanagedFile ->[]
 
 let pe2path pe = pe.Path
 
 let bi2allpes bi =
-    List.append (bi2instances bi) (bi2refs bi)
+    List.append (bi2instances bi) (bi2links bi)
 
 let trimEnd (pat:string) (target:string) =
     if target.EndsWith(pat) then
@@ -493,7 +493,7 @@ let toLinkFile repo upath =
     toLinkPath upath
     |> createEmpty repo
 
-let toReferenceOne :ToReferenceOne = fun repo mf upath->
+let toLinkOne :ToLinkOne = fun repo mf upath->
     let (founds, filtered) = mf.InstancePathList |> List.partition (fun x->x.Path = upath)
     match founds, filtered with
     | [found], _::_ ->
@@ -505,30 +505,30 @@ let toReferenceOne :ToReferenceOne = fun repo mf upath->
         |[thisfi] -> 
             let newpath = toLinkFile repo upath
             let newname = fileName newpath
-            let newfi = {thisfi with FName = newname; Entry={thisfi.Entry with Type=Reference; EntryDate=DateTime.Now}}
+            let newfi = {thisfi with FName = newname; Entry={thisfi.Entry with Type=Link; EntryDate=DateTime.Now}}
             let newfinfos = newfi::other
             let newpe = {Path=newpath; Entry=newfi.Entry}
             saveDirFInfos repo parent newfinfos
             let newMf = 
-                { mf with InstancePathList=filtered; ReferencePathList= newpe::mf.ReferencePathList}
+                { mf with InstancePathList=filtered; LinkPathList= newpe::mf.LinkPathList}
             saveMf repo newMf
             newMf
         |_ -> failwith("upath does not in dirs.txt")        
     | [], _ -> failwith("upath not found")
-    | _, [] -> failwith("only one instance and try changing to reference")
+    | _, [] -> failwith("only one instance and try changing to link")
     | _, _ -> failwith("never happend (like same upath twice, etc.)")
 
 
-// instanceなPEsをreferenceにする。
+// instanceなPEsをlinkにする。
 // instanceを一つは残すのは呼ぶ側の責任
-let makePEListRefs repo mf (pelist:PathEntry list) =
-    pelist |> List.map (fun pe->pe.Path) |> List.fold (toReferenceOne repo) mf
+let makePEListLinks repo mf (pelist:PathEntry list) =
+    pelist |> List.map (fun pe->pe.Path) |> List.fold (toLinkOne repo) mf
 
 
 let uniqIt : UniqIt = fun repo mf ->
     match mf.InstancePathList with
     |first::rest ->
-        makePEListRefs repo mf rest
+        makePEListLinks repo mf rest
     |_ -> mf
 
 
@@ -548,9 +548,9 @@ let removeFile repo upath =
 let pe2finfo hash (pe:PathEntry) =
     {Hash=hash; FName=(fileName pe.Path); Entry=pe.Entry}
 
-let swapInstance repo instPath refPath =
-    removeFile repo refPath
-    let newInstPath = toInstPath refPath
+let swapInstance repo instPath linkPath =
+    removeFile repo linkPath
+    let newInstPath = toInstPath linkPath
     moveFile repo instPath newInstPath
     let newLnkPath = (toLinkPath instPath)
     createEmpty repo newLnkPath |> ignore
@@ -569,15 +569,15 @@ let updateDirInfo repo udir newFi =
 let toInstance : ToInstance = fun repo mf target ->
     // hoge.uitlnk を渡すと、hoge.uitlnk.uitlnkにもマッチしちゃうが、まぁいいでしょう。
     let founds, rest =
-         mf.ReferencePathList |> List.partition (peEqual target)
+         mf.LinkPathList |> List.partition (peEqual target)
     match founds with
     |[found] ->
         let headInst = mf.InstancePathList.Head
         let (headLnkPath, newInstPath) = swapInstance repo headInst.Path target
 
         let newpeInst = {found with Path=newInstPath; Entry={found.Entry with Type=Instance; EntryDate=DateTime.Now}}
-        let newpeRef = {headInst with Path=headLnkPath; Entry={headInst.Entry with Type=Reference; EntryDate=DateTime.Now}}
-        let newmf = {mf with InstancePathList=newpeInst::mf.InstancePathList.Tail; ReferencePathList=newpeRef::rest }
+        let newpeRef = {headInst with Path=headLnkPath; Entry={headInst.Entry with Type=Link; EntryDate=DateTime.Now}}
+        let newmf = {mf with InstancePathList=newpeInst::mf.InstancePathList.Tail; LinkPathList=newpeRef::rest }
         saveMf repo newmf
 
         let newFInst = pe2finfo mf.Hash newpeInst
@@ -628,7 +628,7 @@ let mf2upaths mf =
         mf.InstancePathList
         |> List.map (fun pe-> pe.Path)
     let rp =
-        mf.ReferencePathList
+        mf.LinkPathList
         |> List.map (fun pe-> pe.Path)
     List.append ip rp
 
@@ -645,7 +645,7 @@ listMF repo
 
 
 //
-//  ToReferenceOne, trial
+//  ToLinkOne, trial
 //
 
 // init repo
@@ -660,8 +660,8 @@ let dispMf (mf:ManagedFile) =
     printfn "Hash: %s" (hash2string mf.Hash)
     printf "Inst: "
     mf.InstancePathList |> List.iter (fun pe->printf "%A " pe.Path)
-    printf "\nRefs: "
-    mf.ReferencePathList |> List.iter (fun pe->printf "%A " pe.Path)
+    printf "\nLinks: "
+    mf.LinkPathList |> List.iter (fun pe->printf "%A " pe.Path)
     printfn ""
 
 let lsa repo upath =
@@ -693,6 +693,8 @@ lsa repo (UPath "imgs/美子ちゃん.pxv")
 
 mf
 
+let a = [1]
+a.Tail.Tail
 
 (*
 想定するコマンドラインの使い方を考える。
@@ -712,13 +714,13 @@ uit ls sns/img1.png
 // -lで他のリンク先の情報も見る
 uit ls -l sns/img1.png
 
-// すでにあったらrefとしてインポート。
+// すでにあったらlinkとしてインポート。
 uit import /somewhere/file.mp3 music/file.mp3
 
 // .uit/dirs や .uit/hash を更新しつつ移動
 uit mv sutudy/language/roman study/roman
 
-// refとしてコピーして実体はコピーしない
+// linkとしてコピーして実体はコピーしない
 uit cp mp3/roman/somefile.mp3 study/roman/somefile.mp3
 
 // -iで新しく追加した方をinstanceにする
