@@ -89,7 +89,7 @@ let computeAndSaveDirInfo = fun repo udir ->
     saveDirFInfos repo udir fis
     fis
 
-let toFInfo :ToFInfo = fun repo upath ->
+let fromUPath :ToFInfo = fun repo upath ->
     let udir = parentDir upath
     let fname = fileName upath
     let eqname name (fi:FInfo) =

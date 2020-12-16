@@ -58,7 +58,7 @@ let initOneDir :InitOneDir  = fun repo udir ->
 let upath2binfo :UPath2BInfo = fun repo upath ->
     let fi2bi (fi:FInfo) = fromHash repo fi.Hash
 
-    toFInfo repo upath
+    FInfo.fromUPath repo upath
     |> Option.map fi2bi
 
 
