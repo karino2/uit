@@ -52,7 +52,7 @@ let initOneDir :InitOneDir  = fun repo udir ->
         |UnmanagedBlob -> {Hash =  fi.Hash; InstancePathList=[pe]; LinkPathList=[]}
     fis
     |> List.map fi2binfo
-    |> List.iter (saveMf repo)
+    |> List.iter (saveMb repo)
     fis
 
 let upath2binfo :UPath2BInfo = fun repo upath ->
@@ -88,7 +88,7 @@ let toLinkFile repo upath =
     |> createEmpty repo
 
 let toLinkOne :ToLinkOne = fun repo mb upath->
-    let (founds, filtered) = mb.InstancePathList |> List.partition (fun x->x.Path = upath)
+    let (founds, filtered) = findInstance mb upath
     match founds, filtered with
     | [found], _::_ ->
         let parent = parentDir upath
@@ -105,7 +105,7 @@ let toLinkOne :ToLinkOne = fun repo mb upath->
             saveDirFInfos repo parent newfinfos
             let newMf = 
                 { mb with InstancePathList=filtered; LinkPathList= newpe::mb.LinkPathList}
-            saveMf repo newMf
+            saveMb repo newMf
             newMf
         |_ -> failwith("upath does not in dirs.txt")        
     | [], _ -> failwith("upath not found")
@@ -130,7 +130,7 @@ let pe2finfo hash (pe:PathEntry) =
 
 let swapInstance repo instPath linkPath =
     removeFile repo linkPath
-    let newInstPath = toInstPath linkPath
+    let newInstPath = toInstancePath linkPath
     moveFile repo instPath newInstPath
     let newLnkPath = (toLinkPath instPath)
     createEmpty repo newLnkPath |> ignore
@@ -139,8 +139,7 @@ let swapInstance repo instPath linkPath =
 
 let toInstance : ToInstance = fun repo mb target ->
     // hoge.uitlnk を渡すと、hoge.uitlnk.uitlnkにもマッチしちゃうが、まぁいいでしょう。
-    let founds, rest =
-         mb.LinkPathList |> List.partition (peEqual target)
+    let founds, rest = findLink mb target
     match founds with
     |[found] ->
         let headInst = mb.InstancePathList.Head
@@ -149,7 +148,7 @@ let toInstance : ToInstance = fun repo mb target ->
         let newpeInst = {found with Path=newInstPath; Entry={found.Entry with Type=Instance; EntryDate=DateTime.Now}}
         let newpeRef = {headInst with Path=headLnkPath; Entry={headInst.Entry with Type=Link; EntryDate=DateTime.Now}}
         let newmb = {mb with InstancePathList=newpeInst::mb.InstancePathList.Tail; LinkPathList=newpeRef::rest }
-        saveMf repo newmb
+        saveMb repo newmb
 
         let newFInst = pe2finfo mb.Hash newpeInst
         let newFRef = pe2finfo mb.Hash newpeRef
@@ -162,9 +161,35 @@ let toInstance : ToInstance = fun repo mb target ->
         mb
 
 
+let deleteFileInner repo upath =
+    let fi = toFileInfo repo upath
+    File.Delete(fi.FullName)
+
+let trashUDir = Path.Combine(".uit", "trash") |> UPath |> UDir
+
+let trashRelativePath fname = Path.Combine(".uit", "trash", fname)
+
+let trashPath (repo:Repo) fname = Path.Combine(repo.Path.FullName, trashRelativePath(fname) )
+
+let trashPathFI repo fname = FileInfo(trashPath repo fname)
+
+let trashUPath fname = UPath( trashRelativePath fname )
+
+let findTrashPath repo candidate =
+    let fi = trashPathFI repo candidate
+    if fi.Exists then
+        fi
+    else
+        let found =
+            seq{ 0..100 }
+            |> Seq.map (fun i -> trashPathFI repo (sprintf "%s.%d" candidate i))
+            |> Seq.find (fun fi -> fi.Exists)
+        if found = null then
+            let msg = sprintf "can't find trash path from %s to %s.%d, probably bug." candidate candidate 100
+            failwith(msg)
+        found
 
 
-(*
 /// upathのファイルを削除する。
 /// リンクならただ削除してhash, dirsを更新するだけ。
 /// 他にインスタンスがあってもただ削除するだけ
@@ -173,12 +198,61 @@ let toInstance : ToInstance = fun repo mb target ->
 /// rmではファイルの実体がかならず一つはどこかに残る。
 /// trashにあるファイルはrmtコマンドで消す。
 let remove :Remove = fun repo mb upath ->
-    let insFounds, insRest = mb.InstancePathList |> List.partition (peEqual target)
-    let insFounds, insRest = mb.InstancePathList |> List.partition (peEqual target)
-*)
+    let udir = parentDir upath
 
+    let afterRemove newMb deletedUpath =
+        saveMb repo newMb
+        removeAndSaveDirInfo repo udir deletedUpath |> ignore
+    
+    let moveToTrash mb upath =
+        let trash = findTrashPath repo (fileName upath)
+        let trashUPath = trashUPath trash.Name
+        ensureDir trash.Directory
 
-// TODO: rm
+        let src = toFileInfo repo upath
+        File.Move(src.FullName, trash.FullName)
+
+        let trashEntry = {mb.InstancePathList.Head.Entry with EntryDate=DateTime.Now}
+        let trashPE  = {Path=trashUPath; Entry=trashEntry}
+
+        let newMb = {mb with InstancePathList=[trashPE]}
+        let trashFi = {Entry=trashEntry; Hash=mb.Hash; FName = trash.Name }
+
+        updateDirInfo repo trashUDir trashFi |> ignore
+        afterRemove newMb upath
+        newMb
+
+    let insFounds, insRest = findInstance mb upath
+    let lnkFounds, lnkRest = findLink mb upath
+    
+    match insFounds, lnkFounds, insRest, lnkRest with
+    | [_], [], [], [] -> moveToTrash mb upath
+    | [_], [], _::_, _ ->
+        deleteFileInner repo upath
+        let newMb = {mb with InstancePathList=insRest}
+        afterRemove newMb upath
+        newMb
+    |[_], [], [], lnkfirst::_ ->
+        // 最後のinstanceのケース。
+        // lnkfirstをインスタンスにしてから
+        let mb2 = toInstance repo mb lnkfirst.Path
+
+        // リンクになったupathファイルを削除
+        let inputLnk = toLinkPath upath
+        let lnkFound2, lnkRest2 = findLink mb2 inputLnk
+        // lnkFounds2は必ず [inputLnk]
+        deleteFileInner repo lnkFound2.Head.Path
+
+        let newMb = {mb2 with LinkPathList=lnkRest2}
+        afterRemove newMb lnkFound2.Head.Path
+        newMb
+    | [], [_], _, _ ->
+        deleteFileInner repo upath
+        let newMb = {mb with LinkPathList=lnkRest}
+        afterRemove newMb upath
+        newMb
+    | _ -> failwith("Coruppted ManagedFile object")
+
 // TODO: rmt
 // TODO: import
 // TODO: cp

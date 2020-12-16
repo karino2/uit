@@ -3,6 +3,7 @@ module Blob
 open Common
 open System
 open System.IO
+// fsharplint:disable Hints
 
 // .uit/hash/xx/yyyyyyyyyyy.txt にかかれている情報
 // hashはパスから取り出す。
@@ -75,7 +76,7 @@ let fromHash :FromHash = fun repo hash ->
     else
         UnmanagedBlob
 
-let saveMf repo (mb:ManagedBlob) =
+let saveMb repo (mb:ManagedBlob) =
     let dest = hashPath mb.Hash
     saveText (toFileInfo repo dest) (mb2text mb)
 
@@ -146,5 +147,5 @@ let listHashWith : ListHashWith = fun repo hashstr ->
 let findInstance mb upath =
     mb.InstancePathList |> List.partition  (fun x->x.Path = upath)
 
-let partitionPE target pelist =
-    List.partition (peEqual target) pelist
+let findLink mb upath =
+    mb.LinkPathList |> List.partition (peEqual upath)

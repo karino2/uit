@@ -175,7 +175,7 @@ let toLinkPath upath =
     let (UPath v) = upath
     (UPath (v + LinkExt))
 
-let toInstPath upath =
+let toInstancePath upath =
     let (UPath v) = upath
     (UPath (trimEnd LinkExt v))
 

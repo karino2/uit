@@ -114,4 +114,12 @@ let updateDirInfo repo udir newFi =
     saveDirFInfos repo udir newFis
     newFis
 
+let removeAndSaveDirInfo repo udir upath =
+    let fname = fileName upath
+    let newFis =
+        dirInfo repo udir
+        |> List.filter (fun finfo-> finfo.FName <> fname)
+    saveDirFInfos repo udir newFis
+    newFis
+
 

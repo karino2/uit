@@ -13,6 +13,38 @@ open System.IO
 let deleteUitDir (repo:Repo) =
     Directory.Delete(Path.Combine(repo.Path.FullName, ".uit") ,true)
 
+let mb2upaths mb =
+    let ip =
+        mb.InstancePathList
+        |> List.map (fun pe-> pe.Path)
+    let rp =
+        mb.LinkPathList
+        |> List.map (fun pe-> pe.Path)
+    List.append ip rp
+
+let dispMb (mb:ManagedBlob) =
+    printfn "Hash: %s" (hash2string mb.Hash)
+    printf "Inst: "
+    mb.InstancePathList |> List.iter (fun pe->printf "%A " pe.Path)
+    printf "\nLinks: "
+    mb.LinkPathList |> List.iter (fun pe->printf "%A " pe.Path)
+    printfn ""
+
+let lsa repo upath =
+    let opbinfo = FInfo.fromUPath repo upath
+                |> Option.map (fun fi->fi.Hash)
+                |> Option.map (fromHash repo)
+    match opbinfo with
+    | (Some (ManagedBlob mb)) -> dispMb mb
+    | _ -> ()
+
+let lsmb repo upath =
+    let opbinfo = FInfo.fromUPath repo upath
+                |> Option.map (fun fi->fi.Hash)
+                |> Option.map (fromHash repo)
+    match opbinfo with
+    | (Some (ManagedBlob mb)) -> mb
+    | _ -> failwith("not managed path")
 
 let repo = { Path = DirectoryInfo "/Users/arinokazuma/work/testdata" }
 let mikochan = UPath "sns/美子ちゃん.pxv"
@@ -39,18 +71,7 @@ upath2binfo repo mikochan
 |> Option.map (List.map pe2path)
 
 
-//
-// listHash
-//
 
-let mb2upaths mb =
-    let ip =
-        mb.InstancePathList
-        |> List.map (fun pe-> pe.Path)
-    let rp =
-        mb.LinkPathList
-        |> List.map (fun pe-> pe.Path)
-    List.append ip rp
 
 listHash repo
 listMF repo
@@ -75,33 +96,19 @@ let dups = listDupMF repo
 uniqIt repo dups.Head
 listDupMF repo
 
+listDupMF repo
 
-let dispMb (mb:ManagedBlob) =
-    printfn "Hash: %s" (hash2string mb.Hash)
-    printf "Inst: "
-    mb.InstancePathList |> List.iter (fun pe->printf "%A " pe.Path)
-    printf "\nLinks: "
-    mb.LinkPathList |> List.iter (fun pe->printf "%A " pe.Path)
-    printfn ""
-
-let lsa repo upath =
-    let opbinfo = FInfo.fromUPath repo upath
-                |> Option.map (fun fi->fi.Hash)
-                |> Option.map (fromHash repo)
-    match opbinfo with
-    | (Some (ManagedBlob mb)) -> dispMb mb
-    | _ -> ()
-
-let lsmb repo upath =
-    let opbinfo = FInfo.fromUPath repo upath
-                |> Option.map (fun fi->fi.Hash)
-                |> Option.map (fromHash repo)
-    match opbinfo with
-    | (Some (ManagedBlob mb)) -> mb
-    | _ -> failwith("not managed path")
 
 
 let mb = lsmb repo (UPath "imgs/美子ちゃん.pxv")
+
+let mb2 = remove repo mb (UPath "imgs/美子ちゃん.pxv")
+
+lsmb repo (UPath "sns/美子ちゃん.pxv")
+lsa repo (UPath "imgs/美子ちゃん.pxv")
+
+fromUPath repo (UPath "imgs/美子ちゃん.pxv")
+fromUPath repo (UPath "sns/美子ちゃん.pxv")
 
 toInstance repo mb (UPath "imgs/美子ちゃん.pxv.uitlnk")
 

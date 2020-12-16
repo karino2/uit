@@ -1,3 +1,7 @@
+[0..5]
+
+open System.IO
+Path.Combine(".uit", "trash")
 
 type TraceBuilder() =
     member this.Delay(funcToDelay) =
