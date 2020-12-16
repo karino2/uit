@@ -9,6 +9,7 @@
 
   <ItemGroup>
     <Compile Include="Program.fs" />
+    <Compile Include="Common.fs" />
   </ItemGroup>
 
 </Project>
