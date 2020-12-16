@@ -36,15 +36,15 @@ type PathEntry = {
 // の形式で、LastModifiedは対応するblobをimportした時のfileのlastmodified。
 // EntryDateはこの行を更新した時の日時
 // tはinstanceなら1、linkなら2。
-type ManagedFile = { 
+type ManagedBlob = { 
     Hash : Hash
     InstancePathList : PathEntry list
     LinkPathList : PathEntry list
 }
 
 type BlobInfo = 
-| ManagedFile of ManagedFile
-| UnmanagedFile
+| ManagedBlob of ManagedBlob
+| UnmanagedBlob
 
 // ".uit/dirs/"下にファイルのパスに対応した情報がある。
 // dirsの下にディレクトリ構造そのままコピーしたディレクトリ構造があり、
@@ -66,30 +66,30 @@ type ComputeHash = Repo -> UPath -> Hash
 type ToBInfo = Repo -> Hash -> BlobInfo
 type PathToBInfo = Repo -> UPath -> BlobInfo
 
-type ImportOne = Repo -> FileInfo -> UPath -> ManagedFile
+type ImportOne = Repo -> FileInfo -> UPath -> ManagedBlob
 
 type ListHash = Repo -> Hash list
 // 文字列に一致するハッシュの一覧
 type ListHashWith = Repo -> string -> Hash list
-type ListMF = Repo -> ManagedFile list
-type ListDupMF = Repo -> ManagedFile list
+type ListMF = Repo -> ManagedBlob list
+type ListDupMF = Repo -> ManagedBlob list
 
-type SaveBInfo = Repo -> ManagedFile -> unit
+type SaveBInfo = Repo -> ManagedBlob -> unit
 
-type InstancePaths = ManagedFile -> PathEntry list
-type LinkPaths = ManagedFile -> PathEntry list
+type InstancePaths = ManagedBlob -> PathEntry list
+type LinkPaths = ManagedBlob -> PathEntry list
 
 // 指定されたUPathをinstanceに。他のinstanceファイルはinstanceのまま。
-type ToInstanceOne = Repo -> ManagedFile -> UPath -> ManagedFile
+type ToInstanceOne = Repo -> ManagedBlob -> UPath -> ManagedBlob
 // 指定されたUPathをRefeerenceに。最後の一つをlinkにしようとする時はエラー。
-type ToLinkOne = Repo -> ManagedFile -> UPath -> ManagedFile
+type ToLinkOne = Repo -> ManagedBlob -> UPath -> ManagedBlob
 
 // 指定されたUPathをinstanceに。
 // 他のインスタンスは全てlinkにする。
-type ToInstance = Repo -> ManagedFile -> UPath -> ManagedFile
+type ToInstance = Repo -> ManagedBlob -> UPath -> ManagedBlob
 
 // 重複したinstanceは全てlinkにしてinstanceは一つだけにする。
-type UniqIt = Repo -> ManagedFile -> ManagedFile
+type UniqIt = Repo -> ManagedBlob -> ManagedBlob
 
 // 指定したディレクトリ下のファイルに対してToInstanceを呼び出す
 type ConvDirInstance = Repo -> UDir -> FInfo list
@@ -115,7 +115,11 @@ type ToFInfo = Repo -> UPath -> FInfo option
 type UPath2BInfo  = Repo -> UPath -> BlobInfo option
 
 type FInfos2Text = FInfo list -> string
-type ManagedFileToText = ManagedFile -> string
+type ManagedBlobToText = ManagedBlob -> string
+
+
+// コマンドいろいろ
+type Remove = Repo -> ManagedBlob -> UPath -> ManagedBlob
 
 
 //
@@ -156,12 +160,12 @@ let hashPath hash =
     (UPath (sprintf "%s%s.txt" dir (bytes2string bytes.[1..])))
 
 
-let mf2text :ManagedFileToText = fun mf->
+let mb2text :ManagedBlobToText = fun mb->
     let totext tp (pe: PathEntry) =
         let (UPath path) = pe.Path
         sprintf "%d\t%d\t%d\t%s\n"  tp pe.Entry.LastModified.Ticks pe.Entry.EntryDate.Ticks path
-    let instances = mf.InstancePathList |> List.map (totext 1)
-    let links = mf.LinkPathList |> List.map (totext 2)
+    let instances = mb.InstancePathList |> List.map (totext 1)
+    let links = mb.LinkPathList |> List.map (totext 2)
     List.append instances links |> List.reduce (+)
 
 
@@ -199,9 +203,9 @@ let toBInfo :ToBInfo = fun repo hash ->
             |> Seq.map toIoR
         let is = ret |> Seq.filter (onlyIorR true false) |> Seq.toList
         let rs = ret |> Seq.filter (onlyIorR false true) |> Seq.toList
-        ManagedFile { Hash = hash; InstancePathList=is; LinkPathList=rs }
+        ManagedBlob { Hash = hash; InstancePathList=is; LinkPathList=rs }
     else
-        UnmanagedFile
+        UnmanagedBlob
 
 let diEquals (di1:DirectoryInfo) (di2:DirectoryInfo) =
     di1.FullName.TrimEnd(Path.DirectorySeparatorChar) = di2.FullName.TrimEnd(Path.DirectorySeparatorChar)
@@ -319,9 +323,9 @@ let createUPath udir fname =
     else
         UPath (sprintf "%s/%s" dir fname)
 
-let saveMf repo (mf:ManagedFile) =
-    let dest = hashPath mf.Hash
-    saveText (toFileInfo repo dest) (mf2text mf)
+let saveMf repo (mb:ManagedBlob) =
+    let dest = hashPath mb.Hash
+    saveText (toFileInfo repo dest) (mb2text mb)
 
 let finfo2pe udir (fi:FInfo) =
     let upath = createUPath udir fi.FName
@@ -333,8 +337,8 @@ let initOneDir :InitOneDir  = fun repo udir ->
         let pe = finfo2pe udir fi
         let bi = toBInfo repo fi.Hash
         match bi with
-        |ManagedFile mf -> {mf with InstancePathList=pe::mf.InstancePathList }
-        |UnmanagedFile -> {Hash =  fi.Hash; InstancePathList=[pe]; LinkPathList=[]}
+        |ManagedBlob mb -> {mb with InstancePathList=pe::mb.InstancePathList }
+        |UnmanagedBlob -> {Hash =  fi.Hash; InstancePathList=[pe]; LinkPathList=[]}
     fis
     |> List.map fi2binfo
     |> List.iter (saveMf repo)
@@ -403,13 +407,13 @@ let init :Init = fun repo ->
 
 let bi2instances bi =
     match bi with
-    | ManagedFile mf-> mf.InstancePathList
-    | UnmanagedFile ->[]
+    | ManagedBlob mb-> mb.InstancePathList
+    | UnmanagedBlob ->[]
 
 let bi2links bi =
     match bi with
-    | ManagedFile mf-> mf.LinkPathList
-    | UnmanagedFile ->[]
+    | ManagedBlob mb-> mb.LinkPathList
+    | UnmanagedBlob ->[]
 
 let pe2path pe = pe.Path
 
@@ -445,12 +449,12 @@ let listHash :ListHash =  fun repo ->
 let listMF :ListMF = fun repo ->
     listHash repo
     |> List.map (toBInfo repo)
-    |> List.map (fun bi -> match bi with |ManagedFile mf->mf|UnmanagedFile -> failwith("never reached"))
+    |> List.map (fun bi -> match bi with |ManagedBlob mb->mb|UnmanagedBlob -> failwith("never reached"))
 
 
 let listDupMF : ListDupMF = fun repo->
     listMF repo
-    |> List.filter (fun mf-> match mf.InstancePathList with |_::_::_->true|_->false )
+    |> List.filter (fun mb-> match mb.InstancePathList with |_::_::_->true|_->false )
 
 let listHashWith : ListHashWith = fun repo hashstr ->
     if hashstr.Length < 2 then
@@ -493,8 +497,8 @@ let toLinkFile repo upath =
     toLinkPath upath
     |> createEmpty repo
 
-let toLinkOne :ToLinkOne = fun repo mf upath->
-    let (founds, filtered) = mf.InstancePathList |> List.partition (fun x->x.Path = upath)
+let toLinkOne :ToLinkOne = fun repo mb upath->
+    let (founds, filtered) = mb.InstancePathList |> List.partition (fun x->x.Path = upath)
     match founds, filtered with
     | [found], _::_ ->
         let parent = parentDir upath
@@ -510,7 +514,7 @@ let toLinkOne :ToLinkOne = fun repo mf upath->
             let newpe = {Path=newpath; Entry=newfi.Entry}
             saveDirFInfos repo parent newfinfos
             let newMf = 
-                { mf with InstancePathList=filtered; LinkPathList= newpe::mf.LinkPathList}
+                { mb with InstancePathList=filtered; LinkPathList= newpe::mb.LinkPathList}
             saveMf repo newMf
             newMf
         |_ -> failwith("upath does not in dirs.txt")        
@@ -521,15 +525,15 @@ let toLinkOne :ToLinkOne = fun repo mf upath->
 
 // instanceなPEsをlinkにする。
 // instanceを一つは残すのは呼ぶ側の責任
-let makePEListLinks repo mf (pelist:PathEntry list) =
-    pelist |> List.map (fun pe->pe.Path) |> List.fold (toLinkOne repo) mf
+let makePEListLinks repo mb (pelist:PathEntry list) =
+    pelist |> List.map (fun pe->pe.Path) |> List.fold (toLinkOne repo) mb
 
 
-let uniqIt : UniqIt = fun repo mf ->
-    match mf.InstancePathList with
+let uniqIt : UniqIt = fun repo mb ->
+    match mb.InstancePathList with
     |first::rest ->
-        makePEListLinks repo mf rest
-    |_ -> mf
+        makePEListLinks repo mb rest
+    |_ -> mb
 
 
 
@@ -564,31 +568,56 @@ let updateDirInfo repo udir newFi =
     saveDirFInfos repo udir newFis
     newFis
 
-
-
-let toInstance : ToInstance = fun repo mf target ->
+let toInstance : ToInstance = fun repo mb target ->
     // hoge.uitlnk を渡すと、hoge.uitlnk.uitlnkにもマッチしちゃうが、まぁいいでしょう。
     let founds, rest =
-         mf.LinkPathList |> List.partition (peEqual target)
+         mb.LinkPathList |> List.partition (peEqual target)
     match founds with
     |[found] ->
-        let headInst = mf.InstancePathList.Head
+        let headInst = mb.InstancePathList.Head
         let (headLnkPath, newInstPath) = swapInstance repo headInst.Path target
 
         let newpeInst = {found with Path=newInstPath; Entry={found.Entry with Type=Instance; EntryDate=DateTime.Now}}
         let newpeRef = {headInst with Path=headLnkPath; Entry={headInst.Entry with Type=Link; EntryDate=DateTime.Now}}
-        let newmf = {mf with InstancePathList=newpeInst::mf.InstancePathList.Tail; LinkPathList=newpeRef::rest }
-        saveMf repo newmf
+        let newmb = {mb with InstancePathList=newpeInst::mb.InstancePathList.Tail; LinkPathList=newpeRef::rest }
+        saveMf repo newmb
 
-        let newFInst = pe2finfo mf.Hash newpeInst
-        let newFRef = pe2finfo mf.Hash newpeRef
+        let newFInst = pe2finfo mb.Hash newpeInst
+        let newFRef = pe2finfo mb.Hash newpeRef
         updateDirInfo repo (parentDir target) newFInst |> ignore
         updateDirInfo repo (parentDir headLnkPath) newFRef |> ignore
 
-        newmf
+        newmb
     |_ -> 
         printfn "upath (%A) is not instance" target
-        mf
+        mb
+
+let findInstance mb upath =
+    mb.InstancePathList |> List.partition  (fun x->x.Path = upath)
+
+let partitionPE target pelist =
+    List.partition (peEqual target) pelist
+
+(*
+/// upathのファイルを削除する。
+/// リンクならただ削除してhash, dirsを更新するだけ。
+/// 他にインスタンスがあってもただ削除するだけ
+/// 他にインスタンスが無くリンクがあればリンクの方をinstanceにして削除
+/// ただ一つのインスタンスの場合は.uit/trash/ 下にファイルを移動する。
+/// rmではファイルの実体がかならず一つはどこかに残る。
+/// trashにあるファイルはrmtコマンドで消す。
+let remove :Remove = fun repo mb upath ->
+    let insFounds, insRest = mb.InstancePathList |> List.partition (peEqual target)
+    let insFounds, insRest = mb.InstancePathList |> List.partition (peEqual target)
+*)
+
+
+// TODO: rm
+// TODO: rmt
+// TODO: import
+// TODO: cp
+// TODO: mv
+
 
 //
 // Trial code
@@ -623,18 +652,18 @@ upath2binfo repo mikochan
 // listHash
 //
 
-let mf2upaths mf =
+let mb2upaths mb =
     let ip =
-        mf.InstancePathList
+        mb.InstancePathList
         |> List.map (fun pe-> pe.Path)
     let rp =
-        mf.LinkPathList
+        mb.LinkPathList
         |> List.map (fun pe-> pe.Path)
     List.append ip rp
 
 listHash repo
 listMF repo
-|> List.map mf2upaths |> List.concat
+|> List.map mb2upaths |> List.concat
 
 listMF repo
 listDupMF repo
@@ -656,12 +685,12 @@ uniqIt repo dups.Head
 listDupMF repo
 
 
-let dispMf (mf:ManagedFile) =
-    printfn "Hash: %s" (hash2string mf.Hash)
+let dispMb (mb:ManagedBlob) =
+    printfn "Hash: %s" (hash2string mb.Hash)
     printf "Inst: "
-    mf.InstancePathList |> List.iter (fun pe->printf "%A " pe.Path)
+    mb.InstancePathList |> List.iter (fun pe->printf "%A " pe.Path)
     printf "\nLinks: "
-    mf.LinkPathList |> List.iter (fun pe->printf "%A " pe.Path)
+    mb.LinkPathList |> List.iter (fun pe->printf "%A " pe.Path)
     printfn ""
 
 let lsa repo upath =
@@ -669,32 +698,30 @@ let lsa repo upath =
                 |> Option.map (fun fi->fi.Hash)
                 |> Option.map (toBInfo repo)
     match opbinfo with
-    | (Some (ManagedFile mf)) -> dispMf mf
+    | (Some (ManagedBlob mb)) -> dispMb mb
     | _ -> ()
 
-let lsmf repo upath =
+let lsmb repo upath =
     let opbinfo = toFInfo repo upath
                 |> Option.map (fun fi->fi.Hash)
                 |> Option.map (toBInfo repo)
     match opbinfo with
-    | (Some (ManagedFile mf)) -> mf
+    | (Some (ManagedBlob mb)) -> mb
     | _ -> failwith("not managed path")
 
 
-let mf = lsmf repo (UPath "imgs/美子ちゃん.pxv")
+let mb = lsmb repo (UPath "imgs/美子ちゃん.pxv")
 
-toInstance repo mf (UPath "imgs/美子ちゃん.pxv.uitlnk")
-
-lsa repo (UPath "imgs/美子ちゃん.pxv")
-
-toInstance repo mf (UPath "sns/美子ちゃん.pxv.uitlnk")
+toInstance repo mb (UPath "imgs/美子ちゃん.pxv.uitlnk")
 
 lsa repo (UPath "imgs/美子ちゃん.pxv")
 
-mf
+toInstance repo mb (UPath "sns/美子ちゃん.pxv.uitlnk")
 
-let a = [1]
-a.Tail.Tail
+lsa repo (UPath "imgs/美子ちゃん.pxv")
+
+mb
+
 
 (*
 想定するコマンドラインの使い方を考える。
