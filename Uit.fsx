@@ -1,9 +1,17 @@
 
 #load "Common.fs"
+#load "Blob.fs"
+#load "FInfo.fs"
+#load "Action.fs"
 open Common
+open Blob
+open FInfo
+open Action
 open System.IO
-// fsharplint:disable Hints
 
+// fsharplint:disable Hints
+let deleteUitDir (repo:Repo) =
+    Directory.Delete(Path.Combine(repo.Path.FullName, ".uit") ,true)
 
 
 let repo = { Path = DirectoryInfo "/Users/arinokazuma/work/testdata" }
@@ -79,7 +87,7 @@ let dispMb (mb:ManagedBlob) =
 let lsa repo upath =
     let opbinfo = toFInfo repo upath
                 |> Option.map (fun fi->fi.Hash)
-                |> Option.map (toBInfo repo)
+                |> Option.map (fromHash repo)
     match opbinfo with
     | (Some (ManagedBlob mb)) -> dispMb mb
     | _ -> ()
@@ -87,7 +95,7 @@ let lsa repo upath =
 let lsmb repo upath =
     let opbinfo = toFInfo repo upath
                 |> Option.map (fun fi->fi.Hash)
-                |> Option.map (toBInfo repo)
+                |> Option.map (fromHash repo)
     match opbinfo with
     | (Some (ManagedBlob mb)) -> mb
     | _ -> failwith("not managed path")

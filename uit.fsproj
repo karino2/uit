@@ -1,15 +1,15 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
-
+<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net5.0</TargetFramework>
     <RootNamespace>Uit</RootNamespace>
     <PackAsTool>true</PackAsTool>
   </PropertyGroup>
-
   <ItemGroup>
-    <Compile Include="Program.fs" />
     <Compile Include="Common.fs" />
+    <Compile Include="Blob.fs" />
+    <Compile Include="FInfo.fs" />
+    <Compile Include="Action.fs" />
+    <Compile Include="Program.fs" />
   </ItemGroup>
-
 </Project>
