@@ -37,6 +37,8 @@ type Init = Repo -> unit
 
 // コマンドいろいろ
 type Remove = Repo -> ManagedBlob -> UPath -> ManagedBlob
+type RemoveTrash = Repo -> ManagedBlob -> unit
+
 
 let finfo2pe udir (fi:FInfo) =
     let upath = createUPath udir fi.FName
@@ -129,7 +131,7 @@ let pe2finfo hash (pe:PathEntry) =
     {Hash=hash; FName=(fileName pe.Path); Entry=pe.Entry}
 
 let swapInstance repo instPath linkPath =
-    removeFile repo linkPath
+    justDeleteFile repo linkPath
     let newInstPath = toInstancePath linkPath
     moveFile repo instPath newInstPath
     let newLnkPath = (toLinkPath instPath)
@@ -161,13 +163,11 @@ let toInstance : ToInstance = fun repo mb target ->
         mb
 
 
-let deleteFileInner repo upath =
-    let fi = toFileInfo repo upath
-    File.Delete(fi.FullName)
+let trashRoot = Path.Combine(".uit", "trash")
 
-let trashUDir = Path.Combine(".uit", "trash") |> UPath |> UDir
+let trashUDir = trashRoot |> createUDir
 
-let trashRelativePath fname = Path.Combine(".uit", "trash", fname)
+let trashRelativePath fname = Path.Combine(trashRoot, fname)
 
 let trashPath (repo:Repo) fname = Path.Combine(repo.Path.FullName, trashRelativePath(fname) )
 
@@ -177,13 +177,13 @@ let trashUPath fname = UPath( trashRelativePath fname )
 
 let findTrashPath repo candidate =
     let fi = trashPathFI repo candidate
-    if fi.Exists then
+    if not fi.Exists then
         fi
     else
         let found =
             seq{ 0..100 }
             |> Seq.map (fun i -> trashPathFI repo (sprintf "%s.%d" candidate i))
-            |> Seq.find (fun fi -> fi.Exists)
+            |> Seq.find (fun fi -> not fi.Exists)
         if found = null then
             let msg = sprintf "can't find trash path from %s to %s.%d, probably bug." candidate candidate 100
             failwith(msg)
@@ -198,11 +198,10 @@ let findTrashPath repo candidate =
 /// rmではファイルの実体がかならず一つはどこかに残る。
 /// trashにあるファイルはrmtコマンドで消す。
 let remove :Remove = fun repo mb upath ->
-    let udir = parentDir upath
 
     let afterRemove newMb deletedUpath =
         saveMb repo newMb
-        removeAndSaveDirInfo repo udir deletedUpath |> ignore
+        removeAndSaveDirInfo repo deletedUpath |> ignore
     
     let moveToTrash mb upath =
         let trash = findTrashPath repo (fileName upath)
@@ -228,7 +227,7 @@ let remove :Remove = fun repo mb upath ->
     match insFounds, lnkFounds, insRest, lnkRest with
     | [_], [], [], [] -> moveToTrash mb upath
     | [_], [], _::_, _ ->
-        deleteFileInner repo upath
+        justDeleteFile repo upath
         let newMb = {mb with InstancePathList=insRest}
         afterRemove newMb upath
         newMb
@@ -241,19 +240,35 @@ let remove :Remove = fun repo mb upath ->
         let inputLnk = toLinkPath upath
         let lnkFound2, lnkRest2 = findLink mb2 inputLnk
         // lnkFounds2は必ず [inputLnk]
-        deleteFileInner repo lnkFound2.Head.Path
+        justDeleteFile repo lnkFound2.Head.Path
 
         let newMb = {mb2 with LinkPathList=lnkRest2}
         afterRemove newMb lnkFound2.Head.Path
         newMb
     | [], [_], _, _ ->
-        deleteFileInner repo upath
+        justDeleteFile repo upath
         let newMb = {mb with LinkPathList=lnkRest}
         afterRemove newMb upath
         newMb
     | _ -> failwith("Coruppted ManagedFile object")
 
-// TODO: rmt
+/// トラッシュにあるblobを本当に削除する。
+/// 削除は安全のため、トラッシュにだけある状態でしか行えない。
+let removeTrash :RemoveTrash = fun repo mb ->
+
+    let isTrash upath =
+        let (UPath value) = upath
+        value.StartsWith(trashRoot)
+
+    match mb.InstancePathList, mb.LinkPathList with
+    | [trash], [] ->
+        if not (isTrash trash.Path) then
+            failwith("Not trash blob2")
+        justDeleteFile repo trash.Path
+        removeAndSaveDirInfo repo trash.Path |> ignore
+        removeMbFile repo mb.Hash
+    | _, _-> failwith("Not trash blob.")
+
 // TODO: import
 // TODO: cp
 // TODO: mv

@@ -74,9 +74,12 @@ let dirInfo :DirInfo = fun repo udir ->
             let tp = parseFileType tpstr
             {Hash = hash; FName = fname; Entry={Type=tp;LastModified = last; EntryDate = entdt}}
         |_ -> failwith "corrupted dir.txt"
-    File.ReadLines(fi.FullName)
-    |> Seq.map toFInfo
-    |> Seq.toList
+    if fi.Exists then
+        File.ReadLines(fi.FullName)
+        |> Seq.map toFInfo
+        |> Seq.toList
+    else
+        []
 
 let saveDirFInfos repo udir fis =
     let dirfi = dirFileFI repo udir
@@ -114,7 +117,8 @@ let updateDirInfo repo udir newFi =
     saveDirFInfos repo udir newFis
     newFis
 
-let removeAndSaveDirInfo repo udir upath =
+let removeAndSaveDirInfo repo upath =
+    let udir = parentDir upath
     let fname = fileName upath
     let newFis =
         dirInfo repo udir

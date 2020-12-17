@@ -193,7 +193,8 @@ let moveFile repo upath1 upath2 =
     let fi2 = toFileInfo repo upath2
     File.Move(fi1.FullName, fi2.FullName)    
 
-let removeFile repo upath =
+// メタ情報の更新など一切せずにただファイルを削除する。
+let justDeleteFile repo upath =
     let fi = toFileInfo repo upath
     File.Delete(fi.FullName)
 

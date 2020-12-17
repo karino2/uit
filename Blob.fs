@@ -80,6 +80,14 @@ let saveMb repo (mb:ManagedBlob) =
     let dest = hashPath mb.Hash
     saveText (toFileInfo repo dest) (mb2text mb)
 
+let removeMbFile repo hash =
+    let dest = hashPath hash
+    justDeleteFile repo dest
+    let dir = toDirInfo repo (parentDir dest)
+    let files = dir.EnumerateFiles() |> Seq.toArray
+    if files.Length = 0 then
+        dir.Delete()
+    
 
 let bi2instances bi =
     match bi with

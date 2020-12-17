@@ -46,6 +46,17 @@ let lsmb repo upath =
     | (Some (ManagedBlob mb)) -> mb
     | _ -> failwith("not managed path")
 
+let lshmb repo hashpat = 
+    let hash = listHashWith repo hashpat
+    match hash with
+        |[one] -> 
+            match (fromHash repo one) with
+            | ManagedBlob mb -> mb
+            | UnmanagedBlob -> failwith "unmanaged blob, maybe corrupted."
+        |_ -> 
+            let msg = sprintf "matched hash: %A" hash
+            failwith(msg)
+
 let repo = { Path = DirectoryInfo "/Users/arinokazuma/work/testdata" }
 let mikochan = UPath "sns/美子ちゃん.pxv"
 
@@ -54,22 +65,6 @@ let mikochan = UPath "sns/美子ちゃん.pxv"
 //
 
 init repo
-
-//
-// upath2binfo
-//
-
-upath2binfo repo mikochan
-
-upath2binfo repo mikochan
-|> Option.map bi2allpes
-|> Option.map (List.map pe2path)
-
-
-upath2binfo repo mikochan
-|> Option.map bi2instances
-|> Option.map (List.map pe2path)
-
 
 
 
@@ -104,6 +99,17 @@ let mb = lsmb repo (UPath "imgs/美子ちゃん.pxv")
 
 let mb2 = remove repo mb (UPath "imgs/美子ちゃん.pxv")
 
+remove repo mb2 (UPath "sns/美子ちゃん.pxv")
+
+let mb3 = lshmb repo "2b0b5"
+
+
+removeTrash repo mb3
+
+
+let mb = lsmb repo (UPath ".uit/trash/美子ちゃん.pxv")
+
+
 lsmb repo (UPath "sns/美子ちゃん.pxv")
 lsa repo (UPath "imgs/美子ちゃん.pxv")
 
@@ -118,7 +124,15 @@ toInstance repo mb (UPath "sns/美子ちゃん.pxv.uitlnk")
 
 lsa repo (UPath "imgs/美子ちゃん.pxv")
 
-mb
+let mb = lsmb repo (UPath "imgs/美子ちゃん.pxv")
+
+
+remove repo mb (UPath "imgs/美子ちゃん.pxv")
+
+lsa repo (UPath "sns/美子ちゃん.pxv")
+
+let mb = lsmb repo (UPath "sns/美子ちゃん.pxv")
+remove repo mb (UPath "sns/美子ちゃん.pxv")
 
 
 (*
