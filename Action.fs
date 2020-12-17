@@ -74,7 +74,7 @@ let normalDirs (repo:Repo) =
 let init :Init = fun repo ->
     initOneDir repo rootDir |> ignore
     normalDirs repo
-    |> Seq.map (fun di-> (createUDir repo di.FullName))
+    |> Seq.map (fun di-> (createUDirFromAbs repo di.FullName))
     |> Seq.map (initOneDir repo)
     |> Seq.toList
     |> ignore

@@ -112,6 +112,9 @@ let toUPath (repo:Repo) (from:FileInfo) =
         failwith "from is not under repo"
     UPath (fromAbs.Substring repoAbs.Length)
 
+let createUDir str =
+    str |> UPath |> UDir
+
 let toUDir (repo:Repo) (from:DirectoryInfo) =
     let relative =
         if diEquals repo.Path from then
@@ -123,7 +126,7 @@ let toUDir (repo:Repo) (from:DirectoryInfo) =
                 failwith "from is not under repo"
             fromAbs.Substring repoAbs.Length
     relative
-    |> UPath |> UDir
+    |> createUDir
 
 let toDirInfo repo udir =
     let (UDir path) = udir
@@ -131,7 +134,7 @@ let toDirInfo repo udir =
     fi.FullName.TrimEnd(Path.DirectorySeparatorChar)
     |> DirectoryInfo
 
-let createUDir repo (abspath:string) =    
+let createUDirFromAbs repo (abspath:string) =    
     toUDir repo (DirectoryInfo (abspath.TrimEnd Path.DirectorySeparatorChar))
 
 let createUPath udir fname =
@@ -144,11 +147,11 @@ let createUPath udir fname =
 let parentDir (UPath upath) =
     let comps = upath.Split('/')
     if comps.Length = 1 then
-        UDir (UPath "")
+        createUDir ""
     else
         comps.[0..(comps.Length-2)]
         |> String.concat "/"
-        |> UPath |> UDir
+        |> createUDir
 
 let fileName (UPath upath) =
     let comps = upath.Split('/')
@@ -156,7 +159,7 @@ let fileName (UPath upath) =
 
 let LinkExt = ".uitlnk"
 
-let rootDir = UDir (UPath "")
+let rootDir = createUDir ""
 
 let trimEnd (pat:string) (target:string) =
     if target.EndsWith(pat) then
