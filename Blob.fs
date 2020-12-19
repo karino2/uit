@@ -76,6 +76,12 @@ module Blob =
         | ManagedBlob mb-> mb.LinkPathList
         | UnmanagedBlob ->[]
 
+    let findInstance mb upath =
+        mb.InstancePathList |> List.partition  (fun x->x.Path = upath)
+
+    let findLink mb upath =
+        mb.LinkPathList |> List.partition (peEqual upath)
+
 
 
 
@@ -132,8 +138,3 @@ let listHashWith : ListHashWith = fun repo hashstr ->
             |> Seq.toList
 
 
-let findInstance mb upath =
-    mb.InstancePathList |> List.partition  (fun x->x.Path = upath)
-
-let findLink mb upath =
-    mb.LinkPathList |> List.partition (peEqual upath)

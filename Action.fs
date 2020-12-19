@@ -92,7 +92,7 @@ let toLinkFile repo upath =
     |> createEmpty repo
 
 let toLinkOne :ToLinkOne = fun repo mb upath->
-    let (founds, filtered) = findInstance mb upath
+    let (founds, filtered) = Blob.findInstance mb upath
     match founds, filtered with
     | [found], _::_ ->
         let parent = parentDir upath
@@ -143,7 +143,7 @@ let swapInstance repo instPath linkPath =
 
 let toInstance : ToInstance = fun repo mb target ->
     // hoge.uitlnk を渡すと、hoge.uitlnk.uitlnkにもマッチしちゃうが、まぁいいでしょう。
-    let founds, rest = findLink mb target
+    let founds, rest = Blob.findLink mb target
     match founds with
     |[found] ->
         let headInst = mb.InstancePathList.Head
@@ -223,8 +223,8 @@ let remove :Remove = fun repo mb upath ->
         afterRemove newMb upath
         newMb
 
-    let insFounds, insRest = findInstance mb upath
-    let lnkFounds, lnkRest = findLink mb upath
+    let insFounds, insRest = Blob.findInstance mb upath
+    let lnkFounds, lnkRest = Blob.findLink mb upath
     
     match insFounds, lnkFounds, insRest, lnkRest with
     | [_], [], [], [] -> moveToTrash mb upath
@@ -242,7 +242,7 @@ let remove :Remove = fun repo mb upath ->
 
         // リンクになったupathファイルを削除
         let inputLnk = toLinkPath upath
-        let lnkFound2, lnkRest2 = findLink mb2 inputLnk
+        let lnkFound2, lnkRest2 = Blob.findLink mb2 inputLnk
         // lnkFounds2は必ず [inputLnk]
         justDeleteFile repo lnkFound2.Head.Path
 
