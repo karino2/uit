@@ -218,6 +218,10 @@ let createEmpty repo upath =
     touch fi
     upath
 
+let assertNotExists repo upath =
+    let fi = UPath.toFileInfo repo upath
+    if fi.Exists then
+        failwith (sprintf "file %A is (wrongly) exists." fi)        
 
 let moveFile repo upath1 upath2 =
     let fi1 = UPath.toFileInfo repo upath1

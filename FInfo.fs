@@ -92,7 +92,7 @@ module DInfo =
     /// FInfoを探すのにDInfoモジュールにあるのは不自然に見えるかもしれないが、
     /// DInfo.lsから探すので依存関係的にはここでないといけない。
     /// dirs.txtから探す事を思えばこちらで良いのだが、少しわかりにくい。
-    let findFI repo upath =    
+    let findFInfo repo upath =    
         let udir = parentDir upath
         let fname = UPath.fileName upath
         let eqname name (fi:FInfoT) =
@@ -108,10 +108,10 @@ module DInfo =
             | y::_ -> Some y
             | _-> None
 
-    let updateFI repo udir newFi =
+    let updateFInfo repo udir orgname newFi =
         let rest =
             ls repo udir
-            |> List.filter (fun finfo-> finfo.Hash <> newFi.Hash)
+            |> List.filter (fun finfo-> finfo.FName <> orgname)
         let newFis = newFi::rest
         save repo udir newFis
         newFis

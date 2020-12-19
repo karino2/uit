@@ -25,9 +25,9 @@ init repo
 
 
 
-let dups = listDupMF repo
+let dups = listDupMB repo
 uniqIt repo dups.Head
-listDupMF repo
+listDupMB repo
 
 
 //
@@ -55,8 +55,8 @@ lsmb repo (u "sns/美子ちゃん.pxv")
 lsa repo (u "imgs/美子ちゃん.pxv")
 let mb4 = lshmb repo "2b0b5"
 
-fromUPath repo (u "imgs/美子ちゃん.pxv")
-fromUPath repo (u "sns/美子ちゃん.pxv")
+DInfo.findFInfo repo (u "imgs/美子ちゃん.pxv")
+DInfo.findFInfo repo (u "sns/美子ちゃん.pxv")
 
 toInstance repo mb4 (u "imgs/美子ちゃん.pxv.uitlnk")
 
@@ -66,7 +66,22 @@ toInstance repo mb4 (u "sns/美子ちゃん.pxv.uitlnk")
 
 lsa repo (u "imgs/美子ちゃん.pxv")
 
+//
+// importのテスト
+//
 
+
+let srcfiNew = FileInfo("/Users/arinokazuma/work/forest_4edge.png")
+importOne repo srcfiNew (u "imgs/forest.png")
+lsa repo (u "imgs/forest.png")
+lsmb repo (u "imgs/forest.png")
+
+let srcfiDup = FileInfo("/Users/arinokazuma/work/testdata_org/imgs/美子ちゃん.pxv")
+importOne repo srcfiDup (u "imgs/newmiko.pxv")
+lsa repo (u "imgs/美子ちゃん.pxv")
+
+DInfo.findFInfo repo (u "imgs/美子ちゃん.pxv")
+DInfo.findFInfo repo (u "imgs/newmiko.pxv")
 
 (*
 想定するコマンドラインの使い方を考える。

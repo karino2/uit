@@ -7,9 +7,6 @@ open FInfo
 open System
 open System.IO
 
-type ImportOne = Repo -> FileInfo -> UPath.T -> ManagedBlob
-
-
 // 指定されたUPathをinstanceに。
 // 他のインスタンスは全てlinkにする。
 type ToInstance = Repo -> ManagedBlob -> UPath.T -> ManagedBlob
@@ -38,6 +35,17 @@ let finfo2pe udir (fi:FInfoT) =
     let upath = UPath.create udir fi.FName
     {Path=upath; Entry=fi.Entry}
 
+let pe2finfo hash (pe:PathEntry) =
+    {Hash=hash; FName=(UPath.fileName pe.Path); Entry=pe.Entry}
+
+let createEntries tp lastMod path hash =
+    let entry = {Type=tp; LastModified=lastMod; EntryDate=DateTime.Now}
+    let pe = {Entry=entry; Path=path}
+    let finfo = pe2finfo hash pe
+    pe, finfo
+
+
+
 // Repo下のファイルの.uit/hash と .uit/dirsを作る。
 // まだhashなどが存在しない状態で行われるのでImportとは処理を分けておく
 // .uit/dirsを作る都合でファイル単位じゃなくてディレクトリ単位
@@ -60,7 +68,7 @@ let ifNone defval opt =
 let upath2binfo repo upath =
     let fi2bi (fi:FInfoT) = Blob.fromHash repo fi.Hash
 
-    DInfo.findFI repo upath
+    DInfo.findFInfo repo upath
     |> Option.map fi2bi
     |> ifNone UnmanagedBlob 
 
@@ -106,10 +114,8 @@ module LinkInstance =
             match thisfinfos with
             |[thisfi] -> 
                 let newpath = changeToLinkFileRaw repo upath
-                let newname = UPath.fileName newpath
-                let newfi = {thisfi with FName = newname; Entry={thisfi.Entry with Type=Link; EntryDate=DateTime.Now}}
+                let newpe, newfi = createEntries thisfi.Entry.Type thisfi.Entry.LastModified newpath thisfi.Hash
                 let newfinfos = newfi::other
-                let newpe = {Path=newpath; Entry=newfi.Entry}
                 DInfo.save repo parent newfinfos
                 let newMf = 
                     { mb with InstancePathList=filtered; LinkPathList= newpe::mb.LinkPathList}
@@ -142,8 +148,6 @@ let uniqIt : UniqIt = fun repo mb ->
         LinkInstance.changeToLinks repo mb rest
     |_ -> mb
 
-let pe2finfo hash (pe:PathEntry) =
-    {Hash=hash; FName=(UPath.fileName pe.Path); Entry=pe.Entry}
 
 
 
@@ -155,15 +159,14 @@ let toInstance : ToInstance = fun repo mb target ->
         let headInst = mb.InstancePathList.Head
         let (headLnkPath, newInstPath) = LinkInstance.swapInstance repo headInst.Path target
 
-        let newpeInst = {found with Path=newInstPath; Entry={found.Entry with Type=Instance; EntryDate=DateTime.Now}}
-        let newpeRef = {headInst with Path=headLnkPath; Entry={headInst.Entry with Type=Link; EntryDate=DateTime.Now}}
-        let newmb = {mb with InstancePathList=newpeInst::mb.InstancePathList.Tail; LinkPathList=newpeRef::rest }
+        let newpeInst, newFInst = createEntries Instance found.Entry.LastModified newInstPath mb.Hash
+        let newpeLnk, newFLnk = createEntries Link headInst.Entry.LastModified headLnkPath mb.Hash
+
+        let newmb = {mb with InstancePathList=newpeInst::mb.InstancePathList.Tail; LinkPathList=newpeLnk::rest }
         Blob.save repo newmb
 
-        let newFInst = pe2finfo mb.Hash newpeInst
-        let newFRef = pe2finfo mb.Hash newpeRef
-        DInfo.updateFI repo (parentDir target) newFInst |> ignore
-        DInfo.updateFI repo (parentDir headLnkPath) newFRef |> ignore
+        DInfo.updateFInfo repo (parentDir target) (UPath.fileName target) newFInst |> ignore
+        DInfo.updateFInfo repo (parentDir headLnkPath) (UPath.fileName headInst.Path) newFLnk |> ignore
 
         newmb
     |_ -> 
@@ -229,7 +232,7 @@ let remove :Remove = fun repo mb upath ->
         let newMb = {mb with InstancePathList=[trashPE]}
         let trashFi = {Entry=trashEntry; Hash=mb.Hash; FName = trash.Name }
 
-        DInfo.updateFI repo Trash.udir trashFi |> ignore
+        DInfo.updateFInfo repo Trash.udir "" trashFi |> ignore
         afterRemove newMb upath
         newMb
 
@@ -279,6 +282,47 @@ let removeTrash :RemoveTrash = fun repo mb ->
         DInfo.removeFileEntry repo trash.Path |> ignore
         Blob.removeByHash repo mb.Hash
     | _, _-> failwith("Not trash blob.")
+
+
+/// fiをtopathにimportする。
+/// 存在すればlinkとして、なければinstanceとしてimport。
+/// コンフリクトは無い前提（topathにはファイルが無い前提）
+let importOne repo (fi:FileInfo) topath =
+
+    let saveBoth repo finfodir newmb newfinfo =
+        Blob.save repo newmb
+        DInfo.updateFInfo repo finfodir "" newfinfo |> ignore
+
+    let addAsLink (mb:ManagedBlob) =
+        let linkpath = toLinkPath topath 
+        assertNotExists repo linkpath
+        createEmpty repo linkpath |> ignore
+        let linkpe, finfo = createEntries Link fi.LastWriteTime linkpath mb.Hash
+        let finfoDir = parentDir linkpath
+        let newmb = {mb with LinkPathList=linkpe::mb.LinkPathList}
+        saveBoth repo finfoDir newmb finfo
+        newmb
+
+    let addAsNew hash =
+        let dest = UPath.toFileInfo repo topath
+        assert( not dest.Exists )
+        File.Copy(fi.FullName, dest.FullName)
+        let pe, finfo = createEntries Instance fi.LastWriteTime topath hash 
+        let finfoDir = parentDir topath
+        let newmb = {Hash=hash; InstancePathList=[pe]; LinkPathList=[]}
+        saveBoth repo finfoDir newmb finfo
+        newmb
+
+
+    let hash = computeFileHash fi
+    let bi = Blob.fromHash repo hash
+
+    match bi with
+    | ManagedBlob mb ->
+        addAsLink mb
+    | UnmanagedBlob ->
+        addAsNew hash
+
 
 // TODO: import
 // TODO: cp
