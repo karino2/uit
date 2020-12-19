@@ -23,7 +23,7 @@ let repo = { Path = DirectoryInfo "/Users/arinokazuma/work/testdata" }
 
 init repo
 
-
+lsa repo (u "sns/text/test.cpp")
 
 let dups = listDupMB repo
 uniqIt repo dups.Head
@@ -83,6 +83,15 @@ lsa repo (u "imgs/美子ちゃん.pxv")
 DInfo.findFInfo repo (u "imgs/美子ちゃん.pxv")
 DInfo.findFInfo repo (u "imgs/newmiko.pxv")
 
+
+let importDir = Import.importDir
+
+importDir repo (DirectoryInfo "/Users/arinokazuma/work/testdata_org") (UDir.fromUit "testdir")
+
+listDupMB repo |> List.iter dispMb
+
+lsa repo (u "scratch.fsx")
+listMB repo
 (*
 想定するコマンドラインの使い方を考える。
 

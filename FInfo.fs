@@ -33,6 +33,7 @@ module FInfo =
         | Instance -> format 1 finfo
         | Link -> format 2 finfo
     
+/// DInfoT はFInfo list。今のところわざわざ型を定義しなくても良いかと思いFInfo listをそのまま使っている。
 module DInfo =
     let toText finfos =
         finfos

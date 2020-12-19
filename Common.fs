@@ -34,6 +34,8 @@ module UDir =
         relative
         |> fromUit
 
+    let child (V parent) childName = fromUit (sprintf "%s/%s" parent childName)
+
     // OS path separator区切り
     let toOSPath (V str) = str
 
@@ -218,10 +220,15 @@ let createEmpty repo upath =
     touch fi
     upath
 
-let assertNotExists repo upath =
+let assertFileNotExists repo upath =
     let fi = UPath.toFileInfo repo upath
     if fi.Exists then
-        failwith (sprintf "file %A is (wrongly) exists." fi)        
+        failwith (sprintf "file %A is (wrongly) exists." fi)
+
+let assertDirNotExists repo udir =
+    let di = UDir.toDI repo udir
+    if di.Exists then
+        failwith (sprintf "Directory %A is (wrongly) exists." di)
 
 let moveFile repo upath1 upath2 =
     let fi1 = UPath.toFileInfo repo upath1

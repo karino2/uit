@@ -84,11 +84,16 @@ let normalDirs (repo:Repo) =
 // fsharplint:disable Hints
 let init :Init = fun repo ->
     initOneDir repo rootDir |> ignore
+    let rec initDirs (di:DirectoryInfo) =
+        let udir = UDir.fromAbs repo di.FullName
+        initOneDir repo udir |> ignore
+        di.EnumerateDirectories()
+        |> Seq.toList
+        |> List.iter initDirs
+
     normalDirs repo
-    |> Seq.map (fun di-> (UDir.fromAbs repo di.FullName))
-    |> Seq.map (initOneDir repo)
     |> Seq.toList
-    |> ignore
+    |> List.iter initDirs
 
 /// internalで使われる、linkとinstanceの間を操作するモジュール
 /// 使う時にはいろいろな前提があるので注意を要する
@@ -287,7 +292,7 @@ module Import =
 
     let addAsLinkWOSave repo (fi:FileInfo) topath (mb:ManagedBlob) =
         let linkpath = toLinkPath topath 
-        assertNotExists repo linkpath
+        assertFileNotExists repo linkpath
         createEmpty repo linkpath |> ignore
         let linkpe, finfo = createEntries Link fi.LastWriteTime linkpath mb.Hash
         let newmb = {mb with LinkPathList=linkpe::mb.LinkPathList}
@@ -301,12 +306,8 @@ module Import =
         let newmb = {Hash=hash; InstancePathList=[pe]; LinkPathList=[]}
         newmb, finfo
 
-    /// fiをtopathにimportする。
-    /// 存在すればlinkとして、なければinstanceとしてimport。
-    /// コンフリクトは無い前提（topathにはファイルが無い前提）
-    let importFile repo (fi:FileInfo) topath =
 
-        let finfoDir = parentDir topath
+    let importFileCommon repo after (fi:FileInfo) topath =
 
         let saveBoth repo finfodir newmb newfinfo =
             Blob.save repo newmb
@@ -314,13 +315,11 @@ module Import =
 
         let addAsLink (mb:ManagedBlob) =
             let newmb, finfo = addAsLinkWOSave repo fi topath mb
-            saveBoth repo finfoDir newmb finfo
-            newmb
+            after newmb finfo
 
         let addAsNew hash =
             let newmb, finfo = addAsNewWOSave repo fi topath hash
-            saveBoth repo finfoDir newmb finfo
-            newmb
+            after newmb finfo
 
 
         let hash = computeFileHash fi
@@ -332,8 +331,56 @@ module Import =
         | UnmanagedBlob ->
             addAsNew hash
 
+    /// fiをtopathにimportする。
+    /// 存在すればlinkとして、なければinstanceとしてimport。
+    /// コンフリクトは無い前提（topathにはファイルが無い前提）
+    let importFile repo (fi:FileInfo) topath =
 
-// TODO: import
+        let finfoDir = parentDir topath
+
+        let saveBoth newmb newfinfo =
+            Blob.save repo newmb
+            DInfo.updateFInfo repo finfoDir "" newfinfo |> ignore
+            newmb
+
+        importFileCommon repo saveBoth fi topath
+
+
+    /// ディレクトリをインポート
+    /// todirは存在しない前提（普通存在する時はその子供になるが、そういった処理は呼び出し側でやる事） 
+    let importDir repo di todir =
+        assertDirNotExists repo todir
+
+        let rec importDirRec repo (di:DirectoryInfo) todir =
+            let destDI = UDir.toDI repo todir
+            ensureDir destDI
+
+            let saveMB newmb newfinfo =
+                Blob.save repo newmb
+                newfinfo
+
+            let importOne (fi:FileInfo) =
+                let topath = UPath.create todir fi.Name
+                importFileCommon repo saveMB fi topath
+
+            let saveDirInfo finfos =
+                DInfo.save repo todir finfos |> ignore
+
+
+            di.EnumerateFiles()
+            |> Seq.map importOne
+            |> Seq.toList
+            |> saveDirInfo
+
+            di.EnumerateDirectories()
+            |> Seq.toList
+            |> List.iter (fun newdi->
+                         importDirRec repo newdi (UDir.child todir newdi.Name))
+
+        importDirRec repo di todir
+
+// TODO: importでの上書き処理
+// TODO: direcotryのls
 // TODO: cp
 // TODO: mv
 
