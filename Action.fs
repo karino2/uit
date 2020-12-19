@@ -99,9 +99,10 @@ module LinkInstance =
         match founds, filtered with
         | [found], _::_ ->
             let parent = parentDir upath
-            let dirinfo = DInfo.ls repo parent
             let fname = UPath.fileName upath
-            let (thisfinfos, other) = dirinfo |> List.partition (fun finf -> finf.FName = fname)
+            let (thisfinfos, other) =
+                 DInfo.ls repo parent
+                 |> List.partition (fun finf -> finf.FName = fname)
             match thisfinfos with
             |[thisfi] -> 
                 let newpath = changeToLinkFileRaw repo upath
