@@ -25,13 +25,13 @@ type ToInstance = Repo -> ManagedBlob -> UPath.T -> ManagedBlob
 type UniqIt = Repo -> ManagedBlob -> ManagedBlob
 
 // 指定したディレクトリ下のファイルに対してToInstanceを呼び出す
-type ConvDirInstance = Repo -> UDir.T -> FInfo list
+type ConvDirInstance = Repo -> UDir.T -> FInfoT list
 
 
 // Repo下のファイルの.uit/hash と .uit/dirsを作る。
 // まだhashなどが存在しない状態で行われるのでImportとは処理を分けておく
 // .uit/dirsを作る都合でファイル単位じゃなくてディレクトリ単位
-type InitOneDir = Repo -> UDir.T -> FInfo list
+type InitOneDir = Repo -> UDir.T -> FInfoT list
 
 
 // Repo下のファイルを全てなめて.uit/hashと.uit/dirsを作る
@@ -42,13 +42,13 @@ type Remove = Repo -> ManagedBlob -> UPath.T -> ManagedBlob
 type RemoveTrash = Repo -> ManagedBlob -> unit
 
 
-let finfo2pe udir (fi:FInfo) =
+let finfo2pe udir (fi:FInfoT) =
     let upath = UPath.create udir fi.FName
     {Path=upath; Entry=fi.Entry}
 
 let initOneDir :InitOneDir  = fun repo udir ->
-    let fis = computeAndSaveDirInfo repo udir
-    let fi2binfo (fi:FInfo) =
+    let fis = DInfo.computeAndSave repo udir
+    let fi2binfo (fi:FInfoT) =
         let pe = finfo2pe udir fi
         let bi = Blob.fromHash repo fi.Hash
         match bi with
@@ -60,9 +60,9 @@ let initOneDir :InitOneDir  = fun repo udir ->
     fis
 
 let upath2binfo :UPath2BInfo = fun repo upath ->
-    let fi2bi (fi:FInfo) = Blob.fromHash repo fi.Hash
+    let fi2bi (fi:FInfoT) = Blob.fromHash repo fi.Hash
 
-    FInfo.fromUPath repo upath
+    DInfo.findFI repo upath
     |> Option.map fi2bi
 
 
@@ -96,7 +96,7 @@ let toLinkOne :ToLinkOne = fun repo mb upath->
     match founds, filtered with
     | [found], _::_ ->
         let parent = parentDir upath
-        let dirinfo = dirInfo repo parent
+        let dirinfo = DInfo.ls repo parent
         let fname = UPath.fileName upath
         let (thisfinfos, other) = dirinfo |> List.partition (fun finf -> finf.FName = fname)
         match thisfinfos with
@@ -106,7 +106,7 @@ let toLinkOne :ToLinkOne = fun repo mb upath->
             let newfi = {thisfi with FName = newname; Entry={thisfi.Entry with Type=Link; EntryDate=DateTime.Now}}
             let newfinfos = newfi::other
             let newpe = {Path=newpath; Entry=newfi.Entry}
-            saveDirFInfos repo parent newfinfos
+            DInfo.save repo parent newfinfos
             let newMf = 
                 { mb with InstancePathList=filtered; LinkPathList= newpe::mb.LinkPathList}
             Blob.save repo newMf
@@ -156,8 +156,8 @@ let toInstance : ToInstance = fun repo mb target ->
 
         let newFInst = pe2finfo mb.Hash newpeInst
         let newFRef = pe2finfo mb.Hash newpeRef
-        updateDirInfo repo (parentDir target) newFInst |> ignore
-        updateDirInfo repo (parentDir headLnkPath) newFRef |> ignore
+        DInfo.updateFI repo (parentDir target) newFInst |> ignore
+        DInfo.updateFI repo (parentDir headLnkPath) newFRef |> ignore
 
         newmb
     |_ -> 
@@ -203,7 +203,7 @@ let remove :Remove = fun repo mb upath ->
 
     let afterRemove newMb deletedUpath =
         Blob.save repo newMb
-        removeAndSaveDirInfo repo deletedUpath |> ignore
+        DInfo.removeFileEntry repo deletedUpath |> ignore
     
     let moveToTrash mb upath =
         let trash = findTrashPath repo (UPath.fileName upath)
@@ -219,7 +219,7 @@ let remove :Remove = fun repo mb upath ->
         let newMb = {mb with InstancePathList=[trashPE]}
         let trashFi = {Entry=trashEntry; Hash=mb.Hash; FName = trash.Name }
 
-        updateDirInfo repo trashUDir trashFi |> ignore
+        DInfo.updateFI repo trashUDir trashFi |> ignore
         afterRemove newMb upath
         newMb
 
@@ -270,7 +270,7 @@ let removeTrash :RemoveTrash = fun repo mb ->
         if not (isTrash trash.Path) then
             failwith("Not trash blob2")
         justDeleteFile repo trash.Path
-        removeAndSaveDirInfo repo trash.Path |> ignore
+        DInfo.removeFileEntry repo trash.Path |> ignore
         Blob.removeByHash repo mb.Hash
     | _, _-> failwith("Not trash blob.")
 

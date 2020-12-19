@@ -27,7 +27,7 @@ let dispMb (mb:ManagedBlob) =
     printfn ""
 
 let lsa repo upath =
-    let opbinfo = FInfo.fromUPath repo upath
+    let opbinfo = DInfo.findFI repo upath
                 |> Option.map (fun fi->fi.Hash)
                 |> Option.map (Blob.fromHash repo)
     match opbinfo with
@@ -35,7 +35,7 @@ let lsa repo upath =
     | _ -> ()
 
 let lsmb repo upath =
-    let opbinfo = FInfo.fromUPath repo upath
+    let opbinfo = DInfo.findFI repo upath
                 |> Option.map (fun fi->fi.Hash)
                 |> Option.map (Blob.fromHash repo)
     match opbinfo with

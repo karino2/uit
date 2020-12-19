@@ -13,117 +13,116 @@ open System.IO
 // tp LastModified EntryDate Hash ファイル名
 // となっている。tpはinstanceなら1, linkなら2
 // EntryDateはhash下と同じ物を使う。
-type FInfo = {
+type FInfoT = {
     Entry : Entry
     Hash: Hash
     FName: string
 }
 
-type DirInfo = Repo -> UDir.T -> FInfo list
-type ToFInfo = Repo -> UPath.T -> FInfo option
+module FInfo =
+    let computeFrom fi =
+        let hash = computeFileHash fi
+        {Hash = hash; FName=fi.Name; Entry={Type=Instance; LastModified=fi.LastWriteTime; EntryDate=DateTime.Now}}
 
-type FInfos2Text = FInfo list -> string
+    let toText finfo =
+        let fmt tp (lastmod:DateTime) (entdt:DateTime) hash fname =
+            sprintf "%d\t%d\t%d\t%s\t%s" tp lastmod.Ticks entdt.Ticks (hash2string hash) fname
+        let format tp finfo =
+            fmt tp finfo.Entry.LastModified finfo.Entry.EntryDate finfo.Hash finfo.FName
+        match finfo.Entry.Type with
+        | Instance -> format 1 finfo
+        | Link -> format 2 finfo
+    
+module DInfo =
+    let toText finfos =
+        finfos
+        |> List.map FInfo.toText
+        |> String.concat "\n"
 
-let computeFInfo fi =
-    let hash = computeFileHash fi
-    {Hash = hash; FName=fi.Name; Entry={Type=Instance; LastModified=fi.LastWriteTime; EntryDate=DateTime.Now}}
-
-let finfo2text finfo =
-    let fmt tp (lastmod:DateTime) (entdt:DateTime) hash fname =
-        sprintf "%d\t%d\t%d\t%s\t%s" tp lastmod.Ticks entdt.Ticks (hash2string hash) fname
-    let format tp finfo =
-        fmt tp finfo.Entry.LastModified finfo.Entry.EntryDate finfo.Hash finfo.FName
-    match finfo.Entry.Type with
-    | Instance -> format 1 finfo
-    | Link -> format 2 finfo
-
-let finfos2text finfos =
-    finfos
-    |> List.map finfo2text
-    |> String.concat "\n"
-
-let computeFInfoList repo udir =
-    let di = UDir.toDI repo udir
-    di.EnumerateFiles()
-    |> Seq.map computeFInfo
-    |> Seq.toList
-
-let dirRootStr (repo:Repo) =
-    Path.Combine( repo.Path.FullName, ".uit", "dirs")
-
-let dirFileFI repo udir =
-    let dirRoot = dirRootStr repo
-    let relative = UDir.toOSPath udir
-    let dir = 
-        if String.IsNullOrEmpty relative then
-            dirRoot
-        else
-            Path.Combine(dirRoot, relative)
-    Path.Combine(dir, "dir.txt") |> FileInfo
-
-let dirInfo :DirInfo = fun repo udir ->
-    let fi = dirFileFI repo udir
-    let toFInfo (line :string) =
-        let cells = line.Split('\t', 5)
-        //let (tp, laststr, entdtstr, hashstr, fname) = (cells.[0], cells.[1], cells.[2], cells.[3], cells.[4])
-        match cells with
-        | [|tpstr; laststr; entdtstr; hashstr; fname|] ->
-            let hash = Hash (string2bytes hashstr)
-            let last = DateTime(Int64.Parse laststr)
-            let entdt = DateTime(Int64.Parse entdtstr)
-            let tp = parseFileType tpstr
-            {Hash = hash; FName = fname; Entry={Type=tp;LastModified = last; EntryDate = entdt}}
-        |_ -> failwith "corrupted dir.txt"
-    if fi.Exists then
-        File.ReadLines(fi.FullName)
-        |> Seq.map toFInfo
+    let computeFrom repo udir =
+        let di = UDir.toDI repo udir
+        di.EnumerateFiles()
+        |> Seq.map FInfo.computeFrom
         |> Seq.toList
-    else
-        []
 
-let saveDirFInfos repo udir fis =
-    let dirfi = dirFileFI repo udir
-    dirfi.Directory |> ensureDir
-    finfos2text fis
-    |> saveText dirfi
+    let dirRootStr (repo:Repo) =
+        Path.Combine( repo.Path.FullName, ".uit", "dirs")
 
-let computeAndSaveDirInfo = fun repo udir ->
-    let fis = computeFInfoList repo udir
-    saveDirFInfos repo udir fis
-    fis
+    let dirFI repo udir =
+        let dirRoot = dirRootStr repo
+        let relative = UDir.toOSPath udir
+        let dir = 
+            if String.IsNullOrEmpty relative then
+                dirRoot
+            else
+                Path.Combine(dirRoot, relative)
+        Path.Combine(dir, "dir.txt") |> FileInfo
 
-let fromUPath :ToFInfo = fun repo upath ->
-    let udir = parentDir upath
-    let fname = UPath.fileName upath
-    let eqname name (fi:FInfo) =
-        name = fi.FName
-    let fis = dirInfo repo udir
+    let ls repo udir =
+        let fi = dirFI repo udir
+        let toFInfo (line :string) =
+            let cells = line.Split('\t', 5)
+            //let (tp, laststr, entdtstr, hashstr, fname) = (cells.[0], cells.[1], cells.[2], cells.[3], cells.[4])
+            match cells with
+            | [|tpstr; laststr; entdtstr; hashstr; fname|] ->
+                let hash = Hash (string2bytes hashstr)
+                let last = DateTime(Int64.Parse laststr)
+                let entdt = DateTime(Int64.Parse entdtstr)
+                let tp = parseFileType tpstr
+                {Hash = hash; FName = fname; Entry={Type=tp;LastModified = last; EntryDate = entdt}}
+            |_ -> failwith "corrupted dir.txt"
+        if fi.Exists then
+            File.ReadLines(fi.FullName)
+            |> Seq.map toFInfo
+            |> Seq.toList
+        else
+            []
 
-    let found = fis |> List.filter (eqname fname)
-    match found with
-    | x::_ -> Some x
-    | _-> 
-        let found2 = fis |> List.filter (eqname (fname + LinkExt))
-        match found2 with
-        | y::_ -> Some y
-        | _-> None
+    let save repo udir fis =
+        let dirfi = dirFI repo udir
+        dirfi.Directory |> ensureDir
+        toText fis
+        |> saveText dirfi
 
+    let computeAndSave repo udir=
+        let fis = computeFrom repo udir
+        save repo udir fis
+        fis
 
-let updateDirInfo repo udir newFi =
-    let rest =
-        dirInfo repo udir
-        |> List.filter (fun finfo-> finfo.Hash <> newFi.Hash)
-    let newFis = newFi::rest
-    saveDirFInfos repo udir newFis
-    newFis
+    /// FInfoを探すのにDInfoモジュールにあるのは不自然に見えるかもしれないが、
+    /// DInfo.lsから探すので依存関係的にはここでないといけない。
+    /// dirs.txtから探す事を思えばこちらで良いのだが、少しわかりにくい。
+    let findFI repo upath =    
+        let udir = parentDir upath
+        let fname = UPath.fileName upath
+        let eqname name (fi:FInfoT) =
+            name = fi.FName
+        let fis = ls repo udir
 
-let removeAndSaveDirInfo repo upath =
-    let udir = parentDir upath
-    let fname = UPath.fileName upath
-    let newFis =
-        dirInfo repo udir
-        |> List.filter (fun finfo-> finfo.FName <> fname)
-    saveDirFInfos repo udir newFis
-    newFis
+        let found = fis |> List.filter (eqname fname)
+        match found with
+        | x::_ -> Some x
+        | _-> 
+            let found2 = fis |> List.filter (eqname (fname + LinkExt))
+            match found2 with
+            | y::_ -> Some y
+            | _-> None
+
+    let updateFI repo udir newFi =
+        let rest =
+            ls repo udir
+            |> List.filter (fun finfo-> finfo.Hash <> newFi.Hash)
+        let newFis = newFi::rest
+        save repo udir newFis
+        newFis
+
+    let removeFileEntry repo upath =
+        let udir = parentDir upath
+        let fname = UPath.fileName upath
+        let newFis =
+            ls repo udir
+            |> List.filter (fun finfo-> finfo.FName <> fname)
+        save repo udir newFis
+        newFis
 
 
