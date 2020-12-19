@@ -122,7 +122,7 @@ module LinkInstance =
 
     // instanceなPEsをlinkにする。
     // instanceを一つは残すのは呼ぶ側の責任
-    let makePEListLinks repo mb (pelist:PathEntry list) =
+    let changeToLinks repo mb (pelist:PathEntry list) =
         pelist |> List.map (fun pe->pe.Path) |> List.fold (toLinkOne repo) mb
 
     let swapInstance repo instPath linkPath =
@@ -138,7 +138,7 @@ module LinkInstance =
 let uniqIt : UniqIt = fun repo mb ->
     match mb.InstancePathList with
     |first::rest ->
-        LinkInstance.makePEListLinks repo mb rest
+        LinkInstance.changeToLinks repo mb rest
     |_ -> mb
 
 let pe2finfo hash (pe:PathEntry) =
@@ -171,27 +171,27 @@ let toInstance : ToInstance = fun repo mb target ->
 
 module Trash =
 
-    let rootOSPath = Path.Combine(".uit", "trash")
+    let baseOSPath = Path.Combine(".uit", "trash")
 
-    let udir = rootOSPath |> UDir.fromOSPath
+    let udir = baseOSPath |> UDir.fromOSPath
 
-    let trashRelativePath fname = Path.Combine(rootOSPath, fname)
+    let relativeOSPath fname = Path.Combine(baseOSPath, fname)
 
-    let trashPath (repo:Repo) fname = Path.Combine(repo.Path.FullName, trashRelativePath(fname) )
+    let toOSPath (repo:Repo) fname = Path.Combine(repo.Path.FullName, relativeOSPath(fname) )
 
-    let trashPathFI repo fname = FileInfo(trashPath repo fname)
+    let toFI repo fname = FileInfo(toOSPath repo fname)
 
-    let upath fname = UPath.fromOSPath( trashRelativePath fname )
+    let upath fname = UPath.fromOSPath( relativeOSPath fname )
 
     /// まだ存在しないtrashファイルのパスを取得。
     let findNewFI repo candidate =
-        let fi = trashPathFI repo candidate
+        let fi = toFI repo candidate
         if not fi.Exists then
             fi
         else
             let found =
                 seq{ 0..100 }
-                |> Seq.map (fun i -> trashPathFI repo (sprintf "%s.%d" candidate i))
+                |> Seq.map (fun i -> toFI repo (sprintf "%s.%d" candidate i))
                 |> Seq.find (fun fi -> not fi.Exists)
             if found = null then
                 let msg = sprintf "can't find trash path from %s to %s.%d, probably bug." candidate candidate 100
@@ -199,7 +199,7 @@ module Trash =
             found
 
     let isTrash upath =
-        UPath.pred (fun value->value.StartsWith(rootOSPath)) upath
+        UPath.pred (fun value->value.StartsWith(baseOSPath)) upath
 
 /// upathのファイルを削除する。
 /// リンクならただ削除してhash, dirsを更新するだけ。
