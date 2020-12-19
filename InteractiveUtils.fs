@@ -29,7 +29,7 @@ let dispMb (mb:ManagedBlob) =
 let lsa repo upath =
     let opbinfo = FInfo.fromUPath repo upath
                 |> Option.map (fun fi->fi.Hash)
-                |> Option.map (fromHash repo)
+                |> Option.map (Blob.fromHash repo)
     match opbinfo with
     | (Some (ManagedBlob mb)) -> dispMb mb
     | _ -> ()
@@ -37,7 +37,7 @@ let lsa repo upath =
 let lsmb repo upath =
     let opbinfo = FInfo.fromUPath repo upath
                 |> Option.map (fun fi->fi.Hash)
-                |> Option.map (fromHash repo)
+                |> Option.map (Blob.fromHash repo)
     match opbinfo with
     | (Some (ManagedBlob mb)) -> mb
     | _ -> failwith("not managed path")
@@ -46,7 +46,7 @@ let lshmb repo hashpat =
     let hash = listHashWith repo hashpat
     match hash with
         |[one] -> 
-            match (fromHash repo one) with
+            match (Blob.fromHash repo one) with
             | ManagedBlob mb -> mb
             | UnmanagedBlob -> failwith "unmanaged blob, maybe corrupted."
         |_ -> 

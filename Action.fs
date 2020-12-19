@@ -9,6 +9,7 @@ open System.IO
 
 type ImportOne = Repo -> FileInfo -> UPath.T -> ManagedBlob
 
+type UPath2BInfo  = Repo -> UPath.T -> BlobInfo option
 
 // 指定されたUPathをinstanceに。他のinstanceファイルはinstanceのまま。
 type ToInstanceOne = Repo -> ManagedBlob -> UPath.T -> ManagedBlob
@@ -49,17 +50,17 @@ let initOneDir :InitOneDir  = fun repo udir ->
     let fis = computeAndSaveDirInfo repo udir
     let fi2binfo (fi:FInfo) =
         let pe = finfo2pe udir fi
-        let bi = fromHash repo fi.Hash
+        let bi = Blob.fromHash repo fi.Hash
         match bi with
         |ManagedBlob mb -> {mb with InstancePathList=pe::mb.InstancePathList }
         |UnmanagedBlob -> {Hash =  fi.Hash; InstancePathList=[pe]; LinkPathList=[]}
     fis
     |> List.map fi2binfo
-    |> List.iter (saveMb repo)
+    |> List.iter (Blob.save repo)
     fis
 
 let upath2binfo :UPath2BInfo = fun repo upath ->
-    let fi2bi (fi:FInfo) = fromHash repo fi.Hash
+    let fi2bi (fi:FInfo) = Blob.fromHash repo fi.Hash
 
     FInfo.fromUPath repo upath
     |> Option.map fi2bi
@@ -108,7 +109,7 @@ let toLinkOne :ToLinkOne = fun repo mb upath->
             saveDirFInfos repo parent newfinfos
             let newMf = 
                 { mb with InstancePathList=filtered; LinkPathList= newpe::mb.LinkPathList}
-            saveMb repo newMf
+            Blob.save repo newMf
             newMf
         |_ -> failwith("upath does not in dirs.txt")        
     | [], _ -> failwith("upath not found")
@@ -151,7 +152,7 @@ let toInstance : ToInstance = fun repo mb target ->
         let newpeInst = {found with Path=newInstPath; Entry={found.Entry with Type=Instance; EntryDate=DateTime.Now}}
         let newpeRef = {headInst with Path=headLnkPath; Entry={headInst.Entry with Type=Link; EntryDate=DateTime.Now}}
         let newmb = {mb with InstancePathList=newpeInst::mb.InstancePathList.Tail; LinkPathList=newpeRef::rest }
-        saveMb repo newmb
+        Blob.save repo newmb
 
         let newFInst = pe2finfo mb.Hash newpeInst
         let newFRef = pe2finfo mb.Hash newpeRef
@@ -201,7 +202,7 @@ let findTrashPath repo candidate =
 let remove :Remove = fun repo mb upath ->
 
     let afterRemove newMb deletedUpath =
-        saveMb repo newMb
+        Blob.save repo newMb
         removeAndSaveDirInfo repo deletedUpath |> ignore
     
     let moveToTrash mb upath =
@@ -270,7 +271,7 @@ let removeTrash :RemoveTrash = fun repo mb ->
             failwith("Not trash blob2")
         justDeleteFile repo trash.Path
         removeAndSaveDirInfo repo trash.Path |> ignore
-        removeMbFile repo mb.Hash
+        Blob.removeByHash repo mb.Hash
     | _, _-> failwith("Not trash blob.")
 
 // TODO: import
