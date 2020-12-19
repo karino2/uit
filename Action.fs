@@ -9,13 +9,6 @@ open System.IO
 
 type ImportOne = Repo -> FileInfo -> UPath.T -> ManagedBlob
 
-type UPath2BInfo  = Repo -> UPath.T -> BlobInfo option
-
-// 指定されたUPathをinstanceに。他のinstanceファイルはinstanceのまま。
-type ToInstanceOne = Repo -> ManagedBlob -> UPath.T -> ManagedBlob
-
-// 指定されたUPathをRefeerenceに。最後の一つをlinkにしようとする時はエラー。
-type ToLinkOne = Repo -> ManagedBlob -> UPath.T -> ManagedBlob
 
 // 指定されたUPathをinstanceに。
 // 他のインスタンスは全てlinkにする。
@@ -28,11 +21,6 @@ type UniqIt = Repo -> ManagedBlob -> ManagedBlob
 type ConvDirInstance = Repo -> UDir.T -> FInfoT list
 
 
-// Repo下のファイルの.uit/hash と .uit/dirsを作る。
-// まだhashなどが存在しない状態で行われるのでImportとは処理を分けておく
-// .uit/dirsを作る都合でファイル単位じゃなくてディレクトリ単位
-type InitOneDir = Repo -> UDir.T -> FInfoT list
-
 
 // Repo下のファイルを全てなめて.uit/hashと.uit/dirsを作る
 type Init = Repo -> unit
@@ -42,11 +30,18 @@ type Remove = Repo -> ManagedBlob -> UPath.T -> ManagedBlob
 type RemoveTrash = Repo -> ManagedBlob -> unit
 
 
+//
+// 実装
+// 
+
 let finfo2pe udir (fi:FInfoT) =
     let upath = UPath.create udir fi.FName
     {Path=upath; Entry=fi.Entry}
 
-let initOneDir :InitOneDir  = fun repo udir ->
+// Repo下のファイルの.uit/hash と .uit/dirsを作る。
+// まだhashなどが存在しない状態で行われるのでImportとは処理を分けておく
+// .uit/dirsを作る都合でファイル単位じゃなくてディレクトリ単位
+let initOneDir repo udir =
     let fis = DInfo.computeAndSave repo udir
     let fi2binfo (fi:FInfoT) =
         let pe = finfo2pe udir fi
@@ -59,11 +54,15 @@ let initOneDir :InitOneDir  = fun repo udir ->
     |> List.iter (Blob.save repo)
     fis
 
-let upath2binfo :UPath2BInfo = fun repo upath ->
+let ifNone defval opt =
+    defaultArg opt defval
+
+let upath2binfo repo upath =
     let fi2bi (fi:FInfoT) = Blob.fromHash repo fi.Hash
 
     DInfo.findFI repo upath
     |> Option.map fi2bi
+    |> ifNone UnmanagedBlob 
 
 
 let normalDirs (repo:Repo) =
@@ -83,62 +82,68 @@ let init :Init = fun repo ->
     |> Seq.toList
     |> ignore
 
+/// internalで使われる、linkとinstanceの間を操作するモジュール
+/// 使う時にはいろいろな前提があるので注意を要する
+module LinkInstance =
 
-// without check. internal use only
-let toLinkFile repo upath =
-    let fi = UPath.toFileInfo repo upath
-    fi.Delete()
-    toLinkPath upath
-    |> createEmpty repo
+    // without check. internal use only
+    let toLinkFile repo upath =
+        let fi = UPath.toFileInfo repo upath
+        fi.Delete()
+        toLinkPath upath
+        |> createEmpty repo
 
-let toLinkOne :ToLinkOne = fun repo mb upath->
-    let (founds, filtered) = Blob.findInstance mb upath
-    match founds, filtered with
-    | [found], _::_ ->
-        let parent = parentDir upath
-        let dirinfo = DInfo.ls repo parent
-        let fname = UPath.fileName upath
-        let (thisfinfos, other) = dirinfo |> List.partition (fun finf -> finf.FName = fname)
-        match thisfinfos with
-        |[thisfi] -> 
-            let newpath = toLinkFile repo upath
-            let newname = UPath.fileName newpath
-            let newfi = {thisfi with FName = newname; Entry={thisfi.Entry with Type=Link; EntryDate=DateTime.Now}}
-            let newfinfos = newfi::other
-            let newpe = {Path=newpath; Entry=newfi.Entry}
-            DInfo.save repo parent newfinfos
-            let newMf = 
-                { mb with InstancePathList=filtered; LinkPathList= newpe::mb.LinkPathList}
-            Blob.save repo newMf
-            newMf
-        |_ -> failwith("upath does not in dirs.txt")        
-    | [], _ -> failwith("upath not found")
-    | _, [] -> failwith("only one instance and try changing to link")
-    | _, _ -> failwith("never happend (like same upath twice, etc.)")
+    // 指定されたUPathをRefeerenceに。最後の一つをlinkにしようとする時はエラー。
+    let toLinkOne repo mb upath =
+        let (founds, filtered) = Blob.findInstance mb upath
+        match founds, filtered with
+        | [found], _::_ ->
+            let parent = parentDir upath
+            let dirinfo = DInfo.ls repo parent
+            let fname = UPath.fileName upath
+            let (thisfinfos, other) = dirinfo |> List.partition (fun finf -> finf.FName = fname)
+            match thisfinfos with
+            |[thisfi] -> 
+                let newpath = toLinkFile repo upath
+                let newname = UPath.fileName newpath
+                let newfi = {thisfi with FName = newname; Entry={thisfi.Entry with Type=Link; EntryDate=DateTime.Now}}
+                let newfinfos = newfi::other
+                let newpe = {Path=newpath; Entry=newfi.Entry}
+                DInfo.save repo parent newfinfos
+                let newMf = 
+                    { mb with InstancePathList=filtered; LinkPathList= newpe::mb.LinkPathList}
+                Blob.save repo newMf
+                newMf
+            |_ -> failwith("upath does not in dirs.txt")        
+        | [], _ -> failwith("upath not found")
+        | _, [] -> failwith("only one instance and try changing to link")
+        | _, _ -> failwith("never happend (like same upath twice, etc.)")
 
 
-// instanceなPEsをlinkにする。
-// instanceを一つは残すのは呼ぶ側の責任
-let makePEListLinks repo mb (pelist:PathEntry list) =
-    pelist |> List.map (fun pe->pe.Path) |> List.fold (toLinkOne repo) mb
+    // instanceなPEsをlinkにする。
+    // instanceを一つは残すのは呼ぶ側の責任
+    let makePEListLinks repo mb (pelist:PathEntry list) =
+        pelist |> List.map (fun pe->pe.Path) |> List.fold (toLinkOne repo) mb
+
+    let swapInstance repo instPath linkPath =
+        justDeleteFile repo linkPath
+        let newInstPath = toInstancePath linkPath
+        moveFile repo instPath newInstPath
+        let newLnkPath = (toLinkPath instPath)
+        createEmpty repo newLnkPath |> ignore
+        newLnkPath, newInstPath
+
 
 
 let uniqIt : UniqIt = fun repo mb ->
     match mb.InstancePathList with
     |first::rest ->
-        makePEListLinks repo mb rest
+        LinkInstance.makePEListLinks repo mb rest
     |_ -> mb
 
 let pe2finfo hash (pe:PathEntry) =
     {Hash=hash; FName=(UPath.fileName pe.Path); Entry=pe.Entry}
 
-let swapInstance repo instPath linkPath =
-    justDeleteFile repo linkPath
-    let newInstPath = toInstancePath linkPath
-    moveFile repo instPath newInstPath
-    let newLnkPath = (toLinkPath instPath)
-    createEmpty repo newLnkPath |> ignore
-    newLnkPath, newInstPath
 
 
 let toInstance : ToInstance = fun repo mb target ->
@@ -147,7 +152,7 @@ let toInstance : ToInstance = fun repo mb target ->
     match founds with
     |[found] ->
         let headInst = mb.InstancePathList.Head
-        let (headLnkPath, newInstPath) = swapInstance repo headInst.Path target
+        let (headLnkPath, newInstPath) = LinkInstance.swapInstance repo headInst.Path target
 
         let newpeInst = {found with Path=newInstPath; Entry={found.Entry with Type=Instance; EntryDate=DateTime.Now}}
         let newpeRef = {headInst with Path=headLnkPath; Entry={headInst.Entry with Type=Link; EntryDate=DateTime.Now}}
@@ -164,33 +169,37 @@ let toInstance : ToInstance = fun repo mb target ->
         printfn "upath (%A) is not link" target
         mb
 
+module Trash =
 
-let trashRoot = Path.Combine(".uit", "trash")
+    let rootOSPath = Path.Combine(".uit", "trash")
 
-let trashUDir = trashRoot |> UDir.fromOSPath
+    let udir = rootOSPath |> UDir.fromOSPath
 
-let trashRelativePath fname = Path.Combine(trashRoot, fname)
+    let trashRelativePath fname = Path.Combine(rootOSPath, fname)
 
-let trashPath (repo:Repo) fname = Path.Combine(repo.Path.FullName, trashRelativePath(fname) )
+    let trashPath (repo:Repo) fname = Path.Combine(repo.Path.FullName, trashRelativePath(fname) )
 
-let trashPathFI repo fname = FileInfo(trashPath repo fname)
+    let trashPathFI repo fname = FileInfo(trashPath repo fname)
 
-let trashUPath fname = UPath.fromOSPath( trashRelativePath fname )
+    let upath fname = UPath.fromOSPath( trashRelativePath fname )
 
-let findTrashPath repo candidate =
-    let fi = trashPathFI repo candidate
-    if not fi.Exists then
-        fi
-    else
-        let found =
-            seq{ 0..100 }
-            |> Seq.map (fun i -> trashPathFI repo (sprintf "%s.%d" candidate i))
-            |> Seq.find (fun fi -> not fi.Exists)
-        if found = null then
-            let msg = sprintf "can't find trash path from %s to %s.%d, probably bug." candidate candidate 100
-            failwith(msg)
-        found
+    /// まだ存在しないtrashファイルのパスを取得。
+    let findNewFI repo candidate =
+        let fi = trashPathFI repo candidate
+        if not fi.Exists then
+            fi
+        else
+            let found =
+                seq{ 0..100 }
+                |> Seq.map (fun i -> trashPathFI repo (sprintf "%s.%d" candidate i))
+                |> Seq.find (fun fi -> not fi.Exists)
+            if found = null then
+                let msg = sprintf "can't find trash path from %s to %s.%d, probably bug." candidate candidate 100
+                failwith(msg)
+            found
 
+    let isTrash upath =
+        UPath.pred (fun value->value.StartsWith(rootOSPath)) upath
 
 /// upathのファイルを削除する。
 /// リンクならただ削除してhash, dirsを更新するだけ。
@@ -206,8 +215,8 @@ let remove :Remove = fun repo mb upath ->
         DInfo.removeFileEntry repo deletedUpath |> ignore
     
     let moveToTrash mb upath =
-        let trash = findTrashPath repo (UPath.fileName upath)
-        let trashUPath = trashUPath trash.Name
+        let trash = Trash.findNewFI repo (UPath.fileName upath)
+        let trashUPath = Trash.upath trash.Name
         ensureDir trash.Directory
 
         let src = UPath.toFileInfo repo upath
@@ -219,7 +228,7 @@ let remove :Remove = fun repo mb upath ->
         let newMb = {mb with InstancePathList=[trashPE]}
         let trashFi = {Entry=trashEntry; Hash=mb.Hash; FName = trash.Name }
 
-        DInfo.updateFI repo trashUDir trashFi |> ignore
+        DInfo.updateFI repo Trash.udir trashFi |> ignore
         afterRemove newMb upath
         newMb
 
@@ -261,13 +270,9 @@ let remove :Remove = fun repo mb upath ->
 /// トラッシュにあるblobを本当に削除する。
 /// 削除は安全のため、トラッシュにだけある状態でしか行えない。
 let removeTrash :RemoveTrash = fun repo mb ->
-
-    let isTrash upath =
-        UPath.pred (fun value->value.StartsWith(trashRoot)) upath
-
     match mb.InstancePathList, mb.LinkPathList with
     | [trash], [] ->
-        if not (isTrash trash.Path) then
+        if not (Trash.isTrash trash.Path) then
             failwith("Not trash blob2")
         justDeleteFile repo trash.Path
         DInfo.removeFileEntry repo trash.Path |> ignore
