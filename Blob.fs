@@ -82,21 +82,12 @@ module Blob =
     let findLink mb upath =
         mb.LinkPathList |> List.partition (peEqual upath)
 
-
-
-
-type ListHash = Repo -> Hash list
-// 文字列に一致するハッシュの一覧
-type ListHashWith = Repo -> string -> Hash list
-type ListMB = Repo -> ManagedBlob list
-type ListDupMB = Repo -> ManagedBlob list
-
 let hashRootStr (repo:Repo) =
     Path.Combine(repo.Path.FullName, ".uit", "hash")
 
 let removeTxtExt (name:string) = trimEnd ".txt" name
 
-let listHash :ListHash =  fun repo ->
+let listHash repo =
     let dir2hash (di:DirectoryInfo) =        
         let bs = di.Name
         di.EnumerateFiles()
@@ -110,17 +101,18 @@ let listHash :ListHash =  fun repo ->
     |> Seq.concat
     |> Seq.toList
 
-let listMB :ListMB = fun repo ->
+let listMB repo =
     listHash repo
     |> List.map (Blob.fromHash repo)
     |> List.map (fun bi -> match bi with |ManagedBlob mb->mb|UnmanagedBlob -> failwith("never reached"))
 
 
-let listDupMB : ListDupMB = fun repo->
+let listDupMB repo =
     listMB repo
     |> List.filter (fun mb-> match mb.InstancePathList with |_::_::_->true|_->false )
 
-let listHashWith : ListHashWith = fun repo hashstr ->
+/// 文字列に一致するハッシュの一覧
+let listHashWith repo (hashstr:string) =
     if hashstr.Length < 2 then
         []
     else
