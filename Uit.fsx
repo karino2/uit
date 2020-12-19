@@ -69,15 +69,15 @@ lsa repo (u "imgs/美子ちゃん.pxv")
 //
 // importのテスト
 //
-
+let importFile = Import.importFile
 
 let srcfiNew = FileInfo("/Users/arinokazuma/work/forest_4edge.png")
-importOne repo srcfiNew (u "imgs/forest.png")
+importFile repo srcfiNew (u "imgs/forest.png")
 lsa repo (u "imgs/forest.png")
 lsmb repo (u "imgs/forest.png")
 
 let srcfiDup = FileInfo("/Users/arinokazuma/work/testdata_org/imgs/美子ちゃん.pxv")
-importOne repo srcfiDup (u "imgs/newmiko.pxv")
+importFile repo srcfiDup (u "imgs/newmiko.pxv")
 lsa repo (u "imgs/美子ちゃん.pxv")
 
 DInfo.findFInfo repo (u "imgs/美子ちゃん.pxv")

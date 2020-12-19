@@ -283,45 +283,54 @@ let removeTrash :RemoveTrash = fun repo mb ->
         Blob.removeByHash repo mb.Hash
     | _, _-> failwith("Not trash blob.")
 
+module Import =
 
-/// fiをtopathにimportする。
-/// 存在すればlinkとして、なければinstanceとしてimport。
-/// コンフリクトは無い前提（topathにはファイルが無い前提）
-let importOne repo (fi:FileInfo) topath =
-
-    let saveBoth repo finfodir newmb newfinfo =
-        Blob.save repo newmb
-        DInfo.updateFInfo repo finfodir "" newfinfo |> ignore
-
-    let addAsLink (mb:ManagedBlob) =
+    let addAsLinkWOSave repo (fi:FileInfo) topath (mb:ManagedBlob) =
         let linkpath = toLinkPath topath 
         assertNotExists repo linkpath
         createEmpty repo linkpath |> ignore
         let linkpe, finfo = createEntries Link fi.LastWriteTime linkpath mb.Hash
-        let finfoDir = parentDir linkpath
         let newmb = {mb with LinkPathList=linkpe::mb.LinkPathList}
-        saveBoth repo finfoDir newmb finfo
-        newmb
+        newmb, finfo
 
-    let addAsNew hash =
+    let addAsNewWOSave repo (fi:FileInfo) topath hash =
         let dest = UPath.toFileInfo repo topath
         assert( not dest.Exists )
         File.Copy(fi.FullName, dest.FullName)
         let pe, finfo = createEntries Instance fi.LastWriteTime topath hash 
-        let finfoDir = parentDir topath
         let newmb = {Hash=hash; InstancePathList=[pe]; LinkPathList=[]}
-        saveBoth repo finfoDir newmb finfo
-        newmb
+        newmb, finfo
+
+    /// fiをtopathにimportする。
+    /// 存在すればlinkとして、なければinstanceとしてimport。
+    /// コンフリクトは無い前提（topathにはファイルが無い前提）
+    let importFile repo (fi:FileInfo) topath =
+
+        let finfoDir = parentDir topath
+
+        let saveBoth repo finfodir newmb newfinfo =
+            Blob.save repo newmb
+            DInfo.updateFInfo repo finfodir "" newfinfo |> ignore
+
+        let addAsLink (mb:ManagedBlob) =
+            let newmb, finfo = addAsLinkWOSave repo fi topath mb
+            saveBoth repo finfoDir newmb finfo
+            newmb
+
+        let addAsNew hash =
+            let newmb, finfo = addAsNewWOSave repo fi topath hash
+            saveBoth repo finfoDir newmb finfo
+            newmb
 
 
-    let hash = computeFileHash fi
-    let bi = Blob.fromHash repo hash
+        let hash = computeFileHash fi
+        let bi = Blob.fromHash repo hash
 
-    match bi with
-    | ManagedBlob mb ->
-        addAsLink mb
-    | UnmanagedBlob ->
-        addAsNew hash
+        match bi with
+        | ManagedBlob mb ->
+            addAsLink mb
+        | UnmanagedBlob ->
+            addAsNew hash
 
 
 // TODO: import
