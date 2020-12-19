@@ -12,6 +12,7 @@ type ImportOne = Repo -> FileInfo -> UPath.T -> ManagedBlob
 
 // 指定されたUPathをinstanceに。他のinstanceファイルはinstanceのまま。
 type ToInstanceOne = Repo -> ManagedBlob -> UPath.T -> ManagedBlob
+
 // 指定されたUPathをRefeerenceに。最後の一つをlinkにしようとする時はエラー。
 type ToLinkOne = Repo -> ManagedBlob -> UPath.T -> ManagedBlob
 
@@ -227,12 +228,14 @@ let remove :Remove = fun repo mb upath ->
     match insFounds, lnkFounds, insRest, lnkRest with
     | [_], [], [], [] -> moveToTrash mb upath
     | [_], [], _::_, _ ->
+        // instanceで、残りのinstanceもあるケース。
+        // 単に引数のファイルを消せば良い
         justDeleteFile repo upath
         let newMb = {mb with InstancePathList=insRest}
         afterRemove newMb upath
         newMb
     |[_], [], [], lnkfirst::_ ->
-        // 最後のinstanceのケース。
+        // 最後のinstanceでリンクはあるケース。
         // lnkfirstをインスタンスにしてから
         let mb2 = toInstance repo mb lnkfirst.Path
 
@@ -246,6 +249,8 @@ let remove :Remove = fun repo mb upath ->
         afterRemove newMb lnkFound2.Head.Path
         newMb
     | [], [_], _, _ ->
+        // リンクのケース。インスタンスは必ずあるはず。
+        // リンクをただ消せば良い。
         justDeleteFile repo upath
         let newMb = {mb with LinkPathList=lnkRest}
         afterRemove newMb upath
