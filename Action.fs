@@ -87,7 +87,7 @@ let init :Init = fun repo ->
 module LinkInstance =
 
     // without check. internal use only
-    let toLinkFile repo upath =
+    let changeToLinkFileRaw repo upath =
         let fi = UPath.toFileInfo repo upath
         fi.Delete()
         toLinkPath upath
@@ -104,7 +104,7 @@ module LinkInstance =
             let (thisfinfos, other) = dirinfo |> List.partition (fun finf -> finf.FName = fname)
             match thisfinfos with
             |[thisfi] -> 
-                let newpath = toLinkFile repo upath
+                let newpath = changeToLinkFileRaw repo upath
                 let newname = UPath.fileName newpath
                 let newfi = {thisfi with FName = newname; Entry={thisfi.Entry with Type=Link; EntryDate=DateTime.Now}}
                 let newfinfos = newfi::other
