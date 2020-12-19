@@ -82,8 +82,8 @@ module Blob =
 type ListHash = Repo -> Hash list
 // 文字列に一致するハッシュの一覧
 type ListHashWith = Repo -> string -> Hash list
-type ListMF = Repo -> ManagedBlob list
-type ListDupMF = Repo -> ManagedBlob list
+type ListMB = Repo -> ManagedBlob list
+type ListDupMB = Repo -> ManagedBlob list
 
 let hashRootStr (repo:Repo) =
     Path.Combine(repo.Path.FullName, ".uit", "hash")
@@ -104,14 +104,14 @@ let listHash :ListHash =  fun repo ->
     |> Seq.concat
     |> Seq.toList
 
-let listMF :ListMF = fun repo ->
+let listMB :ListMB = fun repo ->
     listHash repo
     |> List.map (Blob.fromHash repo)
     |> List.map (fun bi -> match bi with |ManagedBlob mb->mb|UnmanagedBlob -> failwith("never reached"))
 
 
-let listDupMF : ListDupMF = fun repo->
-    listMF repo
+let listDupMB : ListDupMB = fun repo->
+    listMB repo
     |> List.filter (fun mb-> match mb.InstancePathList with |_::_::_->true|_->false )
 
 let listHashWith : ListHashWith = fun repo hashstr ->
