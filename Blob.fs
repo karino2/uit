@@ -24,7 +24,7 @@ type BlobInfo =
 | UnmanagedBlob
 
 type FromHash = Repo -> Hash -> BlobInfo
-type PathToBInfo = Repo -> UPath -> BlobInfo
+type PathToBInfo = Repo -> UPath.T -> BlobInfo
 
 type ListHash = Repo -> Hash list
 // 文字列に一致するハッシュの一覧
@@ -33,7 +33,7 @@ type ListMF = Repo -> ManagedBlob list
 type ListDupMF = Repo -> ManagedBlob list
 
 // いる？
-type Paths = Repo -> Hash -> UPath list
+type Paths = Repo -> Hash -> UPath.T list
 
 
 type SaveBInfo = Repo -> ManagedBlob -> unit
@@ -41,14 +41,14 @@ type SaveBInfo = Repo -> ManagedBlob -> unit
 type InstancePaths = ManagedBlob -> PathEntry list
 type LinkPaths = ManagedBlob -> PathEntry list
 
-type UPath2BInfo  = Repo -> UPath -> BlobInfo option
+type UPath2BInfo  = Repo -> UPath.T -> BlobInfo option
 
 type ToText = ManagedBlob -> string
 
 
 let mb2text :ToText = fun mb->
     let totext tp (pe: PathEntry) =
-        let (UPath path) = pe.Path
+        let path = UPath.toUitStr pe.Path
         sprintf "%d\t%d\t%d\t%s\n"  tp pe.Entry.LastModified.Ticks pe.Entry.EntryDate.Ticks path
     let instances = mb.InstancePathList |> List.map (totext 1)
     let links = mb.LinkPathList |> List.map (totext 2)
@@ -56,11 +56,11 @@ let mb2text :ToText = fun mb->
 
 let fromHash :FromHash = fun repo hash ->
     let dir = hashPath hash
-    let fi = toFileInfo repo dir
+    let fi = UPath.toFileInfo repo dir
     let toIoR (line: string) =
         let cells = line.Split('\t', 4)
         let tp = parseFileType cells.[0]
-        {Path=(UPath cells.[3]); Entry={Type = tp; LastModified=DateTime(Int64.Parse cells.[1]); EntryDate=DateTime(Int64.Parse cells.[2])}}
+        {Path=(UPath.fromUit cells.[3]); Entry={Type = tp; LastModified=DateTime(Int64.Parse cells.[1]); EntryDate=DateTime(Int64.Parse cells.[2])}}
     if fi.Exists then
         let onlyIorR icase rcase =
             fun (m:PathEntry) ->
@@ -78,12 +78,12 @@ let fromHash :FromHash = fun repo hash ->
 
 let saveMb repo (mb:ManagedBlob) =
     let dest = hashPath mb.Hash
-    saveText (toFileInfo repo dest) (mb2text mb)
+    saveText (UPath.toFileInfo repo dest) (mb2text mb)
 
 let removeMbFile repo hash =
     let dest = hashPath hash
     justDeleteFile repo dest
-    let dir = toDirInfo repo (parentDir dest)
+    let dir = UDir.toDI repo (parentDir dest)
     let files = dir.EnumerateFiles() |> Seq.toArray
     if files.Length = 0 then
         dir.Delete()
@@ -109,6 +109,8 @@ let bi2allpes bi =
 
 let hashRootStr (repo:Repo) =
     Path.Combine(repo.Path.FullName, ".uit", "hash")
+
+let removeTxtExt (name:string) = trimEnd ".txt" name
 
 let listHash :ListHash =  fun repo ->
     let dir2hash (di:DirectoryInfo) =        

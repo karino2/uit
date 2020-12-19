@@ -19,8 +19,8 @@ type FInfo = {
     FName: string
 }
 
-type DirInfo = Repo -> UDir -> FInfo list
-type ToFInfo = Repo -> UPath -> FInfo option
+type DirInfo = Repo -> UDir.T -> FInfo list
+type ToFInfo = Repo -> UPath.T -> FInfo option
 
 type FInfos2Text = FInfo list -> string
 
@@ -43,7 +43,7 @@ let finfos2text finfos =
     |> String.concat "\n"
 
 let computeFInfoList repo udir =
-    let di = toDirInfo repo udir
+    let di = UDir.toDI repo udir
     di.EnumerateFiles()
     |> Seq.map computeFInfo
     |> Seq.toList
@@ -53,7 +53,7 @@ let dirRootStr (repo:Repo) =
 
 let dirFileFI repo udir =
     let dirRoot = dirRootStr repo
-    let (UDir (UPath relative)) = udir
+    let relative = UDir.toOSPath udir
     let dir = 
         if String.IsNullOrEmpty relative then
             dirRoot
@@ -94,7 +94,7 @@ let computeAndSaveDirInfo = fun repo udir ->
 
 let fromUPath :ToFInfo = fun repo upath ->
     let udir = parentDir upath
-    let fname = fileName upath
+    let fname = UPath.fileName upath
     let eqname name (fi:FInfo) =
         name = fi.FName
     let fis = dirInfo repo udir
@@ -119,7 +119,7 @@ let updateDirInfo repo udir newFi =
 
 let removeAndSaveDirInfo repo upath =
     let udir = parentDir upath
-    let fname = fileName upath
+    let fname = UPath.fileName upath
     let newFis =
         dirInfo repo udir
         |> List.filter (fun finfo-> finfo.FName <> fname)

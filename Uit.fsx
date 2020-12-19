@@ -3,62 +3,19 @@
 #load "Blob.fs"
 #load "FInfo.fs"
 #load "Action.fs"
+#load "InteractiveUtils.fs"
+
 open Common
 open Blob
 open FInfo
 open Action
+open InteractiveUtils
 open System.IO
 
+let u = UPath.fromUit
 // fsharplint:disable Hints
-let deleteUitDir (repo:Repo) =
-    Directory.Delete(Path.Combine(repo.Path.FullName, ".uit") ,true)
-
-let mb2upaths mb =
-    let ip =
-        mb.InstancePathList
-        |> List.map (fun pe-> pe.Path)
-    let rp =
-        mb.LinkPathList
-        |> List.map (fun pe-> pe.Path)
-    List.append ip rp
-
-let dispMb (mb:ManagedBlob) =
-    printfn "Hash: %s" (hash2string mb.Hash)
-    printf "Inst: "
-    mb.InstancePathList |> List.iter (fun pe->printf "%A " pe.Path)
-    printf "\nLinks: "
-    mb.LinkPathList |> List.iter (fun pe->printf "%A " pe.Path)
-    printfn ""
-
-let lsa repo upath =
-    let opbinfo = FInfo.fromUPath repo upath
-                |> Option.map (fun fi->fi.Hash)
-                |> Option.map (fromHash repo)
-    match opbinfo with
-    | (Some (ManagedBlob mb)) -> dispMb mb
-    | _ -> ()
-
-let lsmb repo upath =
-    let opbinfo = FInfo.fromUPath repo upath
-                |> Option.map (fun fi->fi.Hash)
-                |> Option.map (fromHash repo)
-    match opbinfo with
-    | (Some (ManagedBlob mb)) -> mb
-    | _ -> failwith("not managed path")
-
-let lshmb repo hashpat = 
-    let hash = listHashWith repo hashpat
-    match hash with
-        |[one] -> 
-            match (fromHash repo one) with
-            | ManagedBlob mb -> mb
-            | UnmanagedBlob -> failwith "unmanaged blob, maybe corrupted."
-        |_ -> 
-            let msg = sprintf "matched hash: %A" hash
-            failwith(msg)
 
 let repo = { Path = DirectoryInfo "/Users/arinokazuma/work/testdata" }
-let mikochan = UPath "sns/美子ちゃん.pxv"
 
 //
 // Init
@@ -68,71 +25,47 @@ init repo
 
 
 
-listHash repo
-listMF repo
-|> List.map mb2upaths |> List.concat
-
-listMF repo
-listDupMF repo
-
-
-listHashWith repo "2b0b"
-listMF repo
-
-
-//
-//  ToLinkOne, trial
-//
-
-// init repo
-// let mikochan = UPath "sns/美子ちゃん.pxv"
-
 let dups = listDupMF repo
 uniqIt repo dups.Head
 listDupMF repo
 
-listDupMF repo
 
+//
+// remove test
+//
+let mb = lsmb repo (u "imgs/美子ちゃん.pxv")
 
+let mb2 = remove repo mb (u "sns/美子ちゃん.pxv")
 
-let mb = lsmb repo (UPath "imgs/美子ちゃん.pxv")
-
-let mb2 = remove repo mb (UPath "imgs/美子ちゃん.pxv")
-
-remove repo mb2 (UPath "sns/美子ちゃん.pxv")
+remove repo mb2 (u "imgs/美子ちゃん.pxv")
 
 let mb3 = lshmb repo "2b0b5"
 
 
 removeTrash repo mb3
 
+lsmb repo (u ".uit/trash/美子ちゃん.pxv")
 
-let mb = lsmb repo (UPath ".uit/trash/美子ちゃん.pxv")
-
-
-lsmb repo (UPath "sns/美子ちゃん.pxv")
-lsa repo (UPath "imgs/美子ちゃん.pxv")
-
-fromUPath repo (UPath "imgs/美子ちゃん.pxv")
-fromUPath repo (UPath "sns/美子ちゃん.pxv")
-
-toInstance repo mb (UPath "imgs/美子ちゃん.pxv.uitlnk")
-
-lsa repo (UPath "imgs/美子ちゃん.pxv")
-
-toInstance repo mb (UPath "sns/美子ちゃん.pxv.uitlnk")
-
-lsa repo (UPath "imgs/美子ちゃん.pxv")
-
-let mb = lsmb repo (UPath "imgs/美子ちゃん.pxv")
+//
+// toInstance test.
 
 
-remove repo mb (UPath "imgs/美子ちゃん.pxv")
 
-lsa repo (UPath "sns/美子ちゃん.pxv")
+lsmb repo (u "sns/美子ちゃん.pxv")
+lsa repo (u "imgs/美子ちゃん.pxv")
+let mb4 = lshmb repo "2b0b5"
 
-let mb = lsmb repo (UPath "sns/美子ちゃん.pxv")
-remove repo mb (UPath "sns/美子ちゃん.pxv")
+fromUPath repo (u "imgs/美子ちゃん.pxv")
+fromUPath repo (u "sns/美子ちゃん.pxv")
+
+toInstance repo mb4 (u "imgs/美子ちゃん.pxv.uitlnk")
+
+lsa repo (u "imgs/美子ちゃん.pxv")
+
+toInstance repo mb4 (u "sns/美子ちゃん.pxv.uitlnk")
+
+lsa repo (u "imgs/美子ちゃん.pxv")
+
 
 
 (*
@@ -164,5 +97,8 @@ uit cp mp3/roman/somefile.mp3 study/roman/somefile.mp3
 
 // -iで新しく追加した方をinstanceにする
 uit cp -i mp3/roman/somefile.mp3 study/roman/somefile.mp3
+
+// ディレクトリ下のメタ情報を更新。存在しない物は追加、変更されているものは…conflictとして扱うか？ちょっとここは未定。
+uit update study/download/
 
 *)

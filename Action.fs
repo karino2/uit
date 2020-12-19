@@ -7,41 +7,41 @@ open FInfo
 open System
 open System.IO
 
-type ImportOne = Repo -> FileInfo -> UPath -> ManagedBlob
+type ImportOne = Repo -> FileInfo -> UPath.T -> ManagedBlob
 
 
 // 指定されたUPathをinstanceに。他のinstanceファイルはinstanceのまま。
-type ToInstanceOne = Repo -> ManagedBlob -> UPath -> ManagedBlob
+type ToInstanceOne = Repo -> ManagedBlob -> UPath.T -> ManagedBlob
 // 指定されたUPathをRefeerenceに。最後の一つをlinkにしようとする時はエラー。
-type ToLinkOne = Repo -> ManagedBlob -> UPath -> ManagedBlob
+type ToLinkOne = Repo -> ManagedBlob -> UPath.T -> ManagedBlob
 
 // 指定されたUPathをinstanceに。
 // 他のインスタンスは全てlinkにする。
-type ToInstance = Repo -> ManagedBlob -> UPath -> ManagedBlob
+type ToInstance = Repo -> ManagedBlob -> UPath.T -> ManagedBlob
 
 // 重複したinstanceは全てlinkにしてinstanceは一つだけにする。
 type UniqIt = Repo -> ManagedBlob -> ManagedBlob
 
 // 指定したディレクトリ下のファイルに対してToInstanceを呼び出す
-type ConvDirInstance = Repo -> UDir -> FInfo list
+type ConvDirInstance = Repo -> UDir.T -> FInfo list
 
 
 // Repo下のファイルの.uit/hash と .uit/dirsを作る。
 // まだhashなどが存在しない状態で行われるのでImportとは処理を分けておく
 // .uit/dirsを作る都合でファイル単位じゃなくてディレクトリ単位
-type InitOneDir = Repo -> UDir -> FInfo list
+type InitOneDir = Repo -> UDir.T -> FInfo list
 
 
 // Repo下のファイルを全てなめて.uit/hashと.uit/dirsを作る
 type Init = Repo -> unit
 
 // コマンドいろいろ
-type Remove = Repo -> ManagedBlob -> UPath -> ManagedBlob
+type Remove = Repo -> ManagedBlob -> UPath.T -> ManagedBlob
 type RemoveTrash = Repo -> ManagedBlob -> unit
 
 
 let finfo2pe udir (fi:FInfo) =
-    let upath = createUPath udir fi.FName
+    let upath = UPath.create udir fi.FName
     {Path=upath; Entry=fi.Entry}
 
 let initOneDir :InitOneDir  = fun repo udir ->
@@ -76,7 +76,7 @@ let normalDirs (repo:Repo) =
 let init :Init = fun repo ->
     initOneDir repo rootDir |> ignore
     normalDirs repo
-    |> Seq.map (fun di-> (createUDirFromAbs repo di.FullName))
+    |> Seq.map (fun di-> (UDir.fromAbs repo di.FullName))
     |> Seq.map (initOneDir repo)
     |> Seq.toList
     |> ignore
@@ -84,7 +84,7 @@ let init :Init = fun repo ->
 
 // without check. internal use only
 let toLinkFile repo upath =
-    let fi = toFileInfo repo upath
+    let fi = UPath.toFileInfo repo upath
     fi.Delete()
     toLinkPath upath
     |> createEmpty repo
@@ -95,12 +95,12 @@ let toLinkOne :ToLinkOne = fun repo mb upath->
     | [found], _::_ ->
         let parent = parentDir upath
         let dirinfo = dirInfo repo parent
-        let fname = fileName upath
+        let fname = UPath.fileName upath
         let (thisfinfos, other) = dirinfo |> List.partition (fun finf -> finf.FName = fname)
         match thisfinfos with
         |[thisfi] -> 
             let newpath = toLinkFile repo upath
-            let newname = fileName newpath
+            let newname = UPath.fileName newpath
             let newfi = {thisfi with FName = newname; Entry={thisfi.Entry with Type=Link; EntryDate=DateTime.Now}}
             let newfinfos = newfi::other
             let newpe = {Path=newpath; Entry=newfi.Entry}
@@ -128,7 +128,7 @@ let uniqIt : UniqIt = fun repo mb ->
     |_ -> mb
 
 let pe2finfo hash (pe:PathEntry) =
-    {Hash=hash; FName=(fileName pe.Path); Entry=pe.Entry}
+    {Hash=hash; FName=(UPath.fileName pe.Path); Entry=pe.Entry}
 
 let swapInstance repo instPath linkPath =
     justDeleteFile repo linkPath
@@ -159,13 +159,13 @@ let toInstance : ToInstance = fun repo mb target ->
 
         newmb
     |_ -> 
-        printfn "upath (%A) is not instance" target
+        printfn "upath (%A) is not link" target
         mb
 
 
 let trashRoot = Path.Combine(".uit", "trash")
 
-let trashUDir = trashRoot |> createUDir
+let trashUDir = trashRoot |> UDir.fromOSPath
 
 let trashRelativePath fname = Path.Combine(trashRoot, fname)
 
@@ -173,7 +173,7 @@ let trashPath (repo:Repo) fname = Path.Combine(repo.Path.FullName, trashRelative
 
 let trashPathFI repo fname = FileInfo(trashPath repo fname)
 
-let trashUPath fname = UPath( trashRelativePath fname )
+let trashUPath fname = UPath.fromOSPath( trashRelativePath fname )
 
 let findTrashPath repo candidate =
     let fi = trashPathFI repo candidate
@@ -204,11 +204,11 @@ let remove :Remove = fun repo mb upath ->
         removeAndSaveDirInfo repo deletedUpath |> ignore
     
     let moveToTrash mb upath =
-        let trash = findTrashPath repo (fileName upath)
+        let trash = findTrashPath repo (UPath.fileName upath)
         let trashUPath = trashUPath trash.Name
         ensureDir trash.Directory
 
-        let src = toFileInfo repo upath
+        let src = UPath.toFileInfo repo upath
         File.Move(src.FullName, trash.FullName)
 
         let trashEntry = {mb.InstancePathList.Head.Entry with EntryDate=DateTime.Now}
@@ -257,8 +257,7 @@ let remove :Remove = fun repo mb upath ->
 let removeTrash :RemoveTrash = fun repo mb ->
 
     let isTrash upath =
-        let (UPath value) = upath
-        value.StartsWith(trashRoot)
+        UPath.pred (fun value->value.StartsWith(trashRoot)) upath
 
     match mb.InstancePathList, mb.LinkPathList with
     | [trash], [] ->

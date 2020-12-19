@@ -10,6 +10,7 @@
     <Compile Include="Blob.fs" />
     <Compile Include="FInfo.fs" />
     <Compile Include="Action.fs" />
+    <Compile Include="InteractiveUtils.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
 </Project>

@@ -5,14 +5,105 @@ open System.IO
 
 type Hash = Hash of byte array
 
-type UPath = UPath of string
+// このPathは最後のスラッシュは含まない
+type Repo = { Path: DirectoryInfo }
+
+
+let diEquals (di1:DirectoryInfo) (di2:DirectoryInfo) =
+    di1.FullName.TrimEnd(Path.DirectorySeparatorChar) = di2.FullName.TrimEnd(Path.DirectorySeparatorChar)
+
 
 // スラッシュ無しで始まりスラッシュ無しで終わる。
 // rootは""で表す。
-type UDir = UDir of UPath
+module UDir =
+    type T = V of string
+    let fromUit str = V str
 
-// このPathは最後のスラッシュは含まない
-type Repo = { Path: DirectoryInfo }
+    let fromOSPath str = V str
+
+    let fromDI (repo:Repo) (from:DirectoryInfo) =
+        let relative =
+            if diEquals repo.Path from then
+                ""
+            else
+                let fromAbs = from.FullName
+                let repoAbs = repo.Path.FullName + "/"
+                if not (fromAbs.StartsWith repoAbs) then
+                    failwith "from is not under repo"
+                fromAbs.Substring repoAbs.Length
+        relative
+        |> fromUit
+
+    // OS path separator区切り
+    let toOSPath (V str) = str
+
+    // スラッシュ区切り
+    let toUitStr (V str) = str
+
+    let toDI repo udir =
+        let path = toOSPath udir
+        Path.Combine(repo.Path.FullName, path).TrimEnd(Path.DirectorySeparatorChar)
+        |> DirectoryInfo
+
+    let fromAbs repo (abspath:string) =
+        abspath.TrimEnd Path.DirectorySeparatorChar
+        |> DirectoryInfo 
+        |> fromDI repo 
+
+
+
+
+let trimEnd (pat:string) (target:string) =
+    if target.EndsWith(pat) then
+        target.Remove(target.LastIndexOf pat)
+    else
+        target
+
+
+// パス区切りはスラッシュで。uitのrootからの相対パスを表す。
+module UPath =
+    type T = V of string
+    /// osのpath separator区切りによるfactory
+    let fromOSPath str = V str
+
+    /// uit内のスラッシュ区切りによるfactory
+    let fromUit str = V str
+
+    let toUitStr (V str) = str
+
+    let fromFileInfo (repo:Repo) (from:FileInfo) =
+        let fromAbs = from.FullName
+        let repoAbs = repo.Path.FullName + "/"
+        if not (fromAbs.StartsWith repoAbs) then
+            failwith "from is not under repo"
+        V (fromAbs.Substring repoAbs.Length)
+
+
+    let toFileInfo (repo:Repo) (V value) =
+        FileInfo(Path.Combine(repo.Path.FullName, value))
+
+    let fileName upath =
+        let upathstr = toUitStr upath
+        let comps = upathstr.Split('/')
+        comps.[comps.Length-1]
+
+    let conv func (V str) =
+        fromUit (func str)
+    
+    let addExtent extent upath =
+        conv (fun str->str+extent) upath
+
+    let pred func (V str) =
+        (func str)
+
+    let create udir fname =
+        let dir = UDir.toUitStr udir
+        if dir= "" then
+            fromUit fname
+        else
+            fromUit (sprintf "%s/%s" dir fname)
+
+
 
 
 type FileType =
@@ -27,10 +118,10 @@ type Entry = {
 
 type PathEntry = {
     Entry: Entry
-    Path : UPath
+    Path : UPath.T
 }
 
-type ComputeHash = Repo -> UPath -> Hash
+type ComputeHash = Repo -> UPath.T -> Hash
 
 type SaveText = FileInfo -> string -> unit
 
@@ -46,10 +137,6 @@ let computeRawFileHash (sha:SHA256) (path:string) =
     use reader = new FileStream(path, FileMode.Open)
     sha.ComputeHash reader
 
-
-let toFileInfo (repo:Repo) upath =
-    let (UPath value) = upath
-    FileInfo(Path.Combine(repo.Path.FullName, value))
 
 let computeFileHash (fi:FileInfo) =
     Hash (computeRawFileHash sha fi.FullName)
@@ -76,13 +163,13 @@ let string2bytes (sbytes: string) =
 
 let hashDir hash =
     let (Hash bytes) = hash
-    (UPath (sprintf ".uit/hash/%02x/" bytes.[0]))
+    (UDir.fromUit (sprintf ".uit/hash/%02x" bytes.[0]))
 
 
 let hashPath hash =
     let (Hash bytes) = hash
-    let (UPath dir) = hashDir hash
-    (UPath (sprintf "%s%s.txt" dir (bytes2string bytes.[1..])))
+    let dir = hashDir hash |> UDir.toUitStr
+    (UPath.fromUit (sprintf "%s/%s.txt" dir (bytes2string bytes.[1..])))
 
 
 let ensureDir (di: DirectoryInfo) =
@@ -102,100 +189,44 @@ let parseFileType str =
     | _ -> failwith "invalid data"
 
 
-let diEquals (di1:DirectoryInfo) (di2:DirectoryInfo) =
-    di1.FullName.TrimEnd(Path.DirectorySeparatorChar) = di2.FullName.TrimEnd(Path.DirectorySeparatorChar)
+let rootDir = UDir.fromUit ""
 
-let toUPath (repo:Repo) (from:FileInfo) =
-    let fromAbs = from.FullName
-    let repoAbs = repo.Path.FullName + "/"
-    if not (fromAbs.StartsWith repoAbs) then
-        failwith "from is not under repo"
-    UPath (fromAbs.Substring repoAbs.Length)
-
-let createUDir str =
-    str |> UPath |> UDir
-
-let toUDir (repo:Repo) (from:DirectoryInfo) =
-    let relative =
-        if diEquals repo.Path from then
-            ""
-        else
-            let fromAbs = from.FullName
-            let repoAbs = repo.Path.FullName + "/"
-            if not (fromAbs.StartsWith repoAbs) then
-                failwith "from is not under repo"
-            fromAbs.Substring repoAbs.Length
-    relative
-    |> createUDir
-
-let toDirInfo repo udir =
-    let (UDir path) = udir
-    let fi = toFileInfo repo path
-    fi.FullName.TrimEnd(Path.DirectorySeparatorChar)
-    |> DirectoryInfo
-
-let createUDirFromAbs repo (abspath:string) =    
-    toUDir repo (DirectoryInfo (abspath.TrimEnd Path.DirectorySeparatorChar))
-
-let createUPath udir fname =
-    let (UDir (UPath dir)) = udir
-    if dir= "" then
-        UPath fname
-    else
-        UPath (sprintf "%s/%s" dir fname)
-
-let parentDir (UPath upath) =
-    let comps = upath.Split('/')
+let parentDir upath =
+    let pathstr = UPath.toUitStr upath
+    let comps = pathstr.Split('/')
     if comps.Length = 1 then
-        createUDir ""
+        rootDir
     else
         comps.[0..(comps.Length-2)]
         |> String.concat "/"
-        |> createUDir
-
-let fileName (UPath upath) =
-    let comps = upath.Split('/')
-    comps.[comps.Length-1]
+        |> UDir.fromUit
 
 let LinkExt = ".uitlnk"
-
-let rootDir = createUDir ""
-
-let trimEnd (pat:string) (target:string) =
-    if target.EndsWith(pat) then
-        target.Remove(target.LastIndexOf pat)
-    else
-        target
-
-let removeTxtExt (name:string) = trimEnd ".txt" name
-
 
 let touch (fi:FileInfo) =
     let fs = fi.Create()
     fs.Close()
 
 let toLinkPath upath =
-    let (UPath v) = upath
-    (UPath (v + LinkExt))
+    UPath.addExtent LinkExt upath
 
 let toInstancePath upath =
-    let (UPath v) = upath
-    (UPath (trimEnd LinkExt v))
+    UPath.conv (trimEnd LinkExt) upath
 
 let createEmpty repo upath =
-    let fi = toFileInfo repo upath
+    let fi = UPath.toFileInfo repo upath
     touch fi
     upath
 
 
 let moveFile repo upath1 upath2 =
-    let fi1 = toFileInfo repo upath1
-    let fi2 = toFileInfo repo upath2
+    let fi1 = UPath.toFileInfo repo upath1
+    let fi2 = UPath.toFileInfo repo upath2
     File.Move(fi1.FullName, fi2.FullName)    
 
 // メタ情報の更新など一切せずにただファイルを削除する。
 let justDeleteFile repo upath =
-    let fi = toFileInfo repo upath
+    let fi = UPath.toFileInfo repo upath
     File.Delete(fi.FullName)
 
 let peEqual upath pe =

@@ -1,14 +1,15 @@
 module Program
 
 open System
-
+open Common
+open InteractiveUtils
+open System.IO
 
 [<EntryPoint>]
 let main argv =
-    // Define a function to construct a message to print
-    let from whom =
-        sprintf "from %s" whom
 
-    let message = from "F#" // Call the function
-    printfn "Hello world %s" message
+    let repo = { Path = DirectoryInfo "/Users/arinokazuma/work/testdata" }
+    let mb = lsmb repo (UPath.fromUit "imgs/美子ちゃん.pxv")
+    dispMb mb
+    
     0 // return an integer exit code
