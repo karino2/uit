@@ -4,3 +4,4 @@ obj/
 .fake
 nupkg/
 gomi.txt
+testdata_work/

@@ -1,3 +1,3 @@
 #!/bin/sh
-rm -r ../testdata
-cp -r ../testdata_org ../testdata
+rm -r testdata_work
+cp -r testdata/init testdata_work
