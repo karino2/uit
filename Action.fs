@@ -6,6 +6,7 @@ open FInfo
 
 open System
 open System.IO
+open System.Collections.Generic
 
 // 指定されたUPathをinstanceに。
 // 他のインスタンスは全てlinkにする。
@@ -306,71 +307,124 @@ module Import =
         let newmb = {Hash=hash; InstancePathList=[pe]; LinkPathList=[]}
         newmb, finfo
 
+    type FindResultType =
+    | New
+    | Matched
 
-    let importFileCommon repo after (fi:FileInfo) topath =
+    type FindResult = {Path:UPath.T; Type: FindResultType}
+
+    let findEmpty repo hash (finfoDict:IDictionary<UPath.T, Hash>) cand =
+        let isEmpty repo upath =
+            let fi = UPath.toFileInfo repo upath
+            if not fi.Exists then
+                Some {Type=New; Path=upath}
+            else
+                match finfoDict.TryGetValue(upath) with
+                | true, value -> 
+                    if value = hash then
+                        Some {Type=Matched; Path=upath}
+                    else
+                        None
+                | _ -> None
+        let resopt = isEmpty repo cand
+        match resopt with
+        | Some res -> res
+        | None -> 
+            let dir = parentDir cand
+            let basename = UPath.fileName cand
+
+            let found =
+                seq{ 0..100 }
+                |> Seq.map (fun i -> UPath.create dir (sprintf "%s.%d" basename i))
+                |> Seq.pick (isEmpty repo)
+            
+            found 
+
+
+
+    /// topathが存在しなければ普通にimport。
+    /// 存在する場合、
+    ///    1. ハッシュ値が一致するなら、何もしない
+    ///    2. ハッシュ値が一致しない場合は、topathの末尾に.1, .2とつけてまたやり直す。
+    let importFileCommon repo afterCreate afterMatched (fi:FileInfo) (finfoDict:IDictionary<UPath.T, Hash>) topathCand  =
 
         let saveBoth repo finfodir newmb newfinfo =
             Blob.save repo newmb
             DInfo.updateFInfo repo finfodir "" newfinfo |> ignore
 
-        let addAsLink (mb:ManagedBlob) =
+        let addAsLink (mb:ManagedBlob) topath =
             let newmb, finfo = addAsLinkWOSave repo fi topath mb
-            after newmb finfo
+            afterCreate newmb finfo
 
-        let addAsNew hash =
+        let addAsNew hash topath =
             let newmb, finfo = addAsNewWOSave repo fi topath hash
-            after newmb finfo
+            afterCreate newmb finfo
 
 
         let hash = computeFileHash fi
-        let bi = Blob.fromHash repo hash
+        let fres = findEmpty repo hash finfoDict topathCand
 
-        match bi with
-        | ManagedBlob mb ->
-            addAsLink mb
-        | UnmanagedBlob ->
-            addAsNew hash
+        match fres.Type with
+        | Matched -> afterMatched()
+        | New ->
+            let bi = Blob.fromHash repo hash
+            match bi with
+            | ManagedBlob mb ->
+                addAsLink mb fres.Path
+            | UnmanagedBlob ->
+                addAsNew hash fres.Path
+
+    let toFInfoDict repo finfoDir =
+        DInfo.ls repo finfoDir
+        |> List.map (fun finfo -> (UPath.create finfoDir finfo.FName) , finfo.Hash)
+        |> dict
 
     /// fiをtopathにimportする。
     /// 存在すればlinkとして、なければinstanceとしてimport。
-    /// コンフリクトは無い前提（topathにはファイルが無い前提）
-    let importFile repo (fi:FileInfo) topath =
+    /// toPathCandがすでにある場合、ハッシュが一緒なら何もしない（Noneを返す）、
+    /// 一致しなければtoPathCandの末尾に.1, .2, .3とつけて再試行。
+    let importFile repo (fi:FileInfo) toPathCand =
 
-        let finfoDir = parentDir topath
+        let finfoDir = parentDir toPathCand
 
         let saveBoth newmb newfinfo =
             Blob.save repo newmb
             DInfo.updateFInfo repo finfoDir "" newfinfo |> ignore
-            newmb
+            Some newmb
 
-        importFileCommon repo saveBoth fi topath
+        let finfoDict = toFInfoDict repo finfoDir
+
+        importFileCommon repo saveBoth (fun ()->None) fi finfoDict toPathCand
 
 
     /// ディレクトリをインポート
-    /// todirは存在しない前提（普通存在する時はその子供になるが、そういった処理は呼び出し側でやる事） 
+    /// 各ファイルの振る舞いはimportFileと同様
     let importDir repo di todir =
-        assertDirNotExists repo todir
 
         let rec importDirRec repo (di:DirectoryInfo) todir =
             let destDI = UDir.toDI repo todir
             ensureDir destDI
 
+            let finfoDict = toFInfoDict repo todir
+
             let saveMB newmb newfinfo =
                 Blob.save repo newmb
-                newfinfo
+                Some newfinfo
 
             let importOne (fi:FileInfo) =
                 let topath = UPath.create todir fi.Name
-                importFileCommon repo saveMB fi topath
+                importFileCommon repo saveMB (fun ()->None) fi finfoDict topath
 
-            let saveDirInfo finfos =
-                DInfo.save repo todir finfos |> ignore
-
+            let updateDirInfo finfos =
+                // finfosは新しく作られたもののみのはずだから、appendすれば良い。
+                let old = DInfo.ls repo todir
+                DInfo.save repo todir (List.append finfos old) |> ignore
 
             di.EnumerateFiles()
             |> Seq.map importOne
+            |> Seq.choose id
             |> Seq.toList
-            |> saveDirInfo
+            |> updateDirInfo
 
             di.EnumerateDirectories()
             |> Seq.toList
@@ -379,7 +433,6 @@ module Import =
 
         importDirRec repo di todir
 
-// TODO: importでの上書き処理
 // TODO: direcotryのls
 // TODO: cp
 // TODO: mv
