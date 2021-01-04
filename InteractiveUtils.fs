@@ -4,6 +4,7 @@ open Common
 open Blob
 open FInfo
 open System.IO
+open Action
 
 // fsharplint:disable Hints
 let deleteUitDir (repo:Repo) =
@@ -52,3 +53,7 @@ let lshmb repo hashpat =
         |_ -> 
             let msg = sprintf "matched hash: %A" hash
             failwith(msg)
+
+let uniqItAll repo =
+    listDupMB repo
+    |> List.map (uniqIt repo)

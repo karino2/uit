@@ -46,6 +46,12 @@ module Blob =
         else
             UnmanagedBlob
 
+    /// 必ず存在する事が保証されてるケース。ManagedBlobを返す
+    let fromHashMB repo hash =
+        match (fromHash repo hash) with
+        |ManagedBlob mb -> mb
+        |_ -> failwith(sprintf "Not exist %s" (hash2string hash))
+
     let toText mb =
         let toTextOne tp (pe: PathEntry) =
             let path = UPath.toUitStr pe.Path
@@ -62,7 +68,7 @@ module Blob =
         let dest = hashPath hash
         justDeleteFile repo dest
         let dir = UDir.toDI repo (parentDir dest)
-        let files = dir.EnumerateFiles() |> Seq.toArray
+        let files = listFiles dir |> List.toArray
         if files.Length = 0 then
             dir.Delete()
     
@@ -90,12 +96,12 @@ let removeTxtExt (name:string) = trimEnd ".txt" name
 let listHash repo =
     let dir2hash (di:DirectoryInfo) =        
         let bs = di.Name
-        di.EnumerateFiles()
-        |> Seq.filter (fun fi->fi.Name.EndsWith(".txt"))
-        |> Seq.map (fun fi->(removeTxtExt fi.Name))
-        |> Seq.map (fun rest-> bs+rest)
-        |> Seq.map (string2bytes >> Hash)
-        |> Seq.toList
+        listFiles di
+        |> List.filter (fun fi->fi.Name.EndsWith(".txt"))
+        |> List.map (fun fi->(removeTxtExt fi.Name))
+        |> List.map (fun rest-> bs+rest)
+        |> List.map (string2bytes >> Hash)
+
     DirectoryInfo(hashRootStr(repo)).EnumerateDirectories()
     |> Seq.map dir2hash
     |> Seq.concat
@@ -123,10 +129,9 @@ let listHashWith repo (hashstr:string) =
         if not dir.Exists then
             []
         else
-            dir.EnumerateFiles()
-            |> Seq.filter (fun fi -> fi.Name.StartsWith(hashstr.[2..]))
-            |> Seq.map (fun fi-> dirname + (removeTxtExt fi.Name))
-            |> Seq.map (string2bytes >> Hash)
-            |> Seq.toList
+            listFiles dir
+            |> List.filter (fun fi -> fi.Name.StartsWith(hashstr.[2..]))
+            |> List.map (fun fi-> dirname + (removeTxtExt fi.Name))
+            |> List.map (string2bytes >> Hash)
 
 

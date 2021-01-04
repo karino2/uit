@@ -16,6 +16,7 @@ open TestUtils
 let u = UPath.fromUit
 let lsfi = DInfo.findFInfo
 
+let d = UDir.fromUit
 
 // fsharplint:disable Hints
 
@@ -40,6 +41,8 @@ instLen dupmbs.Head |> should 3
 // 
 uniqIt repo dupmbs.Head
 
+
+listDupMB repo
 let unimb = lsmb repo (u "test1.txt")
 instLen unimb |> should 1
 linkLen unimb |> should 2
@@ -109,4 +112,30 @@ lsfi repo (u "folder2/folder3/another_test1.txt.uitlnk")
 //
 
 
+
+//
+// CopyDirのテスト
+// 
+shellExecute "setuptest.sh" ""
+init repo
+
+uniqItAll repo
+
+copyDir repo (d "folder2") (d "folder1/copy_dest")
+
+let cpfs = DInfo.ls repo (d "folder1/copy_dest")
+cpfs.Length |> should 2
+
+cpfs
+|> List.forall (fun fi->fi.Entry.Type = Link)
+|> should true
+
+let cpfs2 = DInfo.ls repo (d "folder1/copy_dest/folder3")
+cpfs2.Length |> should 1
+cpfs2.Head.Entry.Type |> should Link
+
+let cbmb = lsmb repo (u "folder1/copy_dest/test2.txt")
+
+instLen cbmb |> should 1
+linkLen cbmb |> should 1
 

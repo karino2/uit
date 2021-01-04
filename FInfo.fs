@@ -42,9 +42,8 @@ module DInfo =
 
     let computeFrom repo udir =
         let di = UDir.toDI repo udir
-        di.EnumerateFiles()
-        |> Seq.map FInfo.computeFrom
-        |> Seq.toList
+        listFiles di
+        |> List.map FInfo.computeFrom
 
     let dirRootStr (repo:Repo) =
         Path.Combine( repo.Path.FullName, ".uit", "dirs")
@@ -59,6 +58,7 @@ module DInfo =
                 Path.Combine(dirRoot, relative)
         Path.Combine(dir, "dir.txt") |> FileInfo
 
+    /// udirのdir.txtを読んでDInfoを返す
     let ls repo udir =
         let fi = dirFI repo udir
         let toFInfo (line :string) =

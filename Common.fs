@@ -12,6 +12,9 @@ type Repo = { Path: DirectoryInfo }
 let diEquals (di1:DirectoryInfo) (di2:DirectoryInfo) =
     di1.FullName.TrimEnd(Path.DirectorySeparatorChar) = di2.FullName.TrimEnd(Path.DirectorySeparatorChar)
 
+let ensureDir (di: DirectoryInfo) =
+    if not di.Exists then
+        Directory.CreateDirectory di.FullName |> ignore
 
 // スラッシュ無しで始まりスラッシュ無しで終わる。
 // rootは""で表す。
@@ -52,6 +55,8 @@ module UDir =
         |> DirectoryInfo 
         |> fromDI repo 
 
+    let ensureExists repo udir =
+        ensureDir (toDI repo udir)
 
 
 
@@ -106,8 +111,6 @@ module UPath =
             fromUit (sprintf "%s/%s" dir fname)
 
 
-
-
 type FileType =
 | Instance
 | Link
@@ -139,16 +142,14 @@ let computeRawFileHash (sha:SHA256) (path:string) =
     use reader = new FileStream(path, FileMode.Open)
     sha.ComputeHash reader
 
-
 let computeFileHash (fi:FileInfo) =
     Hash (computeRawFileHash sha fi.FullName)
 
 let bytes2string (bytes: byte[])=
     bytes |> Array.map (sprintf "%02x") |> String.concat ""
 
-let hash2string hash =
-    let (Hash value) = hash
-    bytes2string value
+let hash2string (Hash hash) =
+    bytes2string hash
 
 open System.Globalization
 
@@ -174,9 +175,6 @@ let hashPath hash =
     (UPath.fromUit (sprintf "%s/%s.txt" dir (bytes2string bytes.[1..])))
 
 
-let ensureDir (di: DirectoryInfo) =
-    if not di.Exists then
-        Directory.CreateDirectory di.FullName |> ignore
     
 
 let saveText :SaveText = fun fi text ->
@@ -242,3 +240,10 @@ let justDeleteFile repo upath =
 
 let peEqual upath pe =
     upath = pe.Path || (toLinkPath upath) = pe.Path
+
+
+/// .DS_StoreをskipするEnumerateFiles()、ただし結果はlistで返す
+let listFiles (di:DirectoryInfo) =
+    di.EnumerateFiles()
+    |> Seq.filter (fun fi-> fi.Name <> ".DS_Store")
+    |> Seq.toList

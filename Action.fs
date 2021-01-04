@@ -146,6 +146,14 @@ module LinkInstance =
         createEmpty repo newLnkPath |> ignore
         newLnkPath, newInstPath
 
+    let createLink repo (mb:ManagedBlob) topath lastWriteTime  =
+        let linkpath = toLinkPath topath 
+        assertFileNotExists repo linkpath
+        createEmpty repo linkpath |> ignore
+        let linkpe, finfo = createEntries Link lastWriteTime linkpath mb.Hash
+        let newmb = {mb with LinkPathList=linkpe::mb.LinkPathList}
+        newmb, finfo
+
 
 
 let uniqIt : UniqIt = fun repo mb ->
@@ -292,12 +300,7 @@ let removeTrash :RemoveTrash = fun repo mb ->
 module Import =
 
     let addAsLinkWOSave repo (fi:FileInfo) topath (mb:ManagedBlob) =
-        let linkpath = toLinkPath topath 
-        assertFileNotExists repo linkpath
-        createEmpty repo linkpath |> ignore
-        let linkpe, finfo = createEntries Link fi.LastWriteTime linkpath mb.Hash
-        let newmb = {mb with LinkPathList=linkpe::mb.LinkPathList}
-        newmb, finfo
+        LinkInstance.createLink repo mb topath fi.LastWriteTime
 
     let addAsNewWOSave repo (fi:FileInfo) topath hash =
         let dest = UPath.toFileInfo repo topath
@@ -418,12 +421,11 @@ module Import =
             let updateDirInfo finfos =
                 // finfosは新しく作られたもののみのはずだから、appendすれば良い。
                 let old = DInfo.ls repo todir
-                DInfo.save repo todir (List.append finfos old) |> ignore
+                DInfo.save repo todir (List.append finfos old)
 
-            di.EnumerateFiles()
-            |> Seq.map importOne
-            |> Seq.choose id
-            |> Seq.toList
+            listFiles di
+            |> List.map importOne
+            |> List.choose id
             |> updateDirInfo
 
             di.EnumerateDirectories()
@@ -433,7 +435,51 @@ module Import =
 
         importDirRec repo di todir
 
+
+/// ディレクトリを再帰的にコピー
+/// 移動先のディレクトリは存在しないとする
+/// ファイルは全てlinkとしてコピーされる
+let copyDir repo usrcDir udestDir =
+    // ファイルを一つリンクとしてコピー。MangagedBlobは更新したものを保存し、DInfoは保存せずに返す。
+    let copyFileOne (mb:ManagedBlob) udest =
+        let newmb, finfo = LinkInstance.createLink repo mb udest DateTime.Now
+        Blob.save repo newmb
+        finfo
+
+    let rec copyDirRec repo ucurSrc ucurDest =
+        let curDI = UDir.toDI repo ucurSrc
+        let curDInfo = DInfo.ls repo ucurSrc
+        let fnameFInfoMap =
+             curDInfo |> List.map (fun finfo -> finfo.FName, finfo) |> dict
+        let copyOne (fi:FileInfo) =
+            let finfo = fnameFInfoMap.Item(fi.Name)
+            let mb = Blob.fromHashMB repo finfo.Hash
+            let udest = UPath.create ucurDest fi.Name
+            copyFileOne mb udest
+
+        UDir.ensureExists repo ucurDest
+
+        listFiles curDI
+        |> List.map copyOne
+        |> DInfo.save repo ucurDest
+        
+        curDI.EnumerateDirectories()
+        |> Seq.toList
+        |> List.iter (fun newdi->
+                        copyDirRec repo (UDir.child ucurSrc newdi.Name) (UDir.child ucurDest newdi.Name))
+
+    let destDI = UDir.toDI repo udestDir
+    if destDI.Exists then
+        failwith(sprintf "dest dir %A exists" destDI)
+    copyDirRec repo usrcDir udestDir
+    
+
+/// ディレクトリを再帰的に移動。移動先にコンフリクトがある場合は移動しない。
+/// 
+// let moveDir repo usrcDir udestDir =
+
+
+
 // TODO: direcotryのls
 // TODO: cp
-// TODO: mv
 

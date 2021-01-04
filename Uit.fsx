@@ -15,7 +15,7 @@ open System.IO
 let u = UPath.fromUit
 // fsharplint:disable Hints
 
-let repo = { Path = DirectoryInfo "/Users/arinokazuma/work/testdata" }
+let repo = { Path = DirectoryInfo "./testdata_work" }
 
 //
 // Init
@@ -23,12 +23,11 @@ let repo = { Path = DirectoryInfo "/Users/arinokazuma/work/testdata" }
 
 init repo
 
-lsa repo (u "sns/text/test.cpp")
+
 
 let dups = listDupMB repo
 uniqIt repo dups.Head
 listDupMB repo
-
 
 //
 // remove test
@@ -92,6 +91,20 @@ listDupMB repo |> List.iter dispMb
 
 lsa repo (u "scratch.fsx")
 listMB repo
+
+
+
+let d = UDir.fromUit
+
+lsa repo (u "test1.txt")
+lsmb repo (u "test1.txt")
+
+copyDir repo (d "folder2") (d "folder1/copy_dest")
+
+// Blob.fromHashMB repo hash
+
+listFiles (UDir.toDI repo (d "folder2"))
+
 (*
 想定するコマンドラインの使い方を考える。
 
