@@ -23,11 +23,6 @@ type ConvDirInstance = Repo -> UDir.T -> FInfoT list
 // Repo下のファイルを全てなめて.uit/hashと.uit/dirsを作る
 type Init = Repo -> unit
 
-// コマンドいろいろ
-type Remove = Repo -> ManagedBlob -> UPath.T -> ManagedBlob
-type RemoveTrash = Repo -> ManagedBlob -> unit
-
-
 //
 // 実装
 // 
@@ -219,6 +214,8 @@ module Trash =
     let isTrash upath =
         UPath.pred (fun value->value.StartsWith(baseOSPath)) upath
 
+
+
 /// upathのファイルを削除する。
 /// リンクならただ削除してhash, dirsを更新するだけ。
 /// 他にインスタンスがあってもただ削除するだけ
@@ -226,76 +223,87 @@ module Trash =
 /// ただ一つのインスタンスの場合は.uit/trash/ 下にファイルを移動する。
 /// rmではファイルの実体がかならず一つはどこかに残る。
 /// trashにあるファイルはrmtコマンドで消す。
-let remove :Remove = fun repo mb upath ->
+module Remove =
 
-    let afterRemove newMb deletedUpath =
-        Blob.save repo newMb
+    let removeCommon dinfoUpdater repo mb upath =
+
+        let afterRemove newMb deletedUpath =
+            Blob.save repo newMb
+            dinfoUpdater repo deletedUpath
+        
+        let moveToTrash mb upath =
+            let trash = Trash.findNewFI repo (UPath.fileName upath)
+            let trashUPath = Trash.upath trash.Name
+            ensureDir trash.Directory
+
+            let src = UPath.toFileInfo repo upath
+            File.Move(src.FullName, trash.FullName)
+
+            let trashEntry = {mb.InstancePathList.Head.Entry with EntryDate=DateTime.Now}
+            let trashPE  = {Path=trashUPath; Entry=trashEntry}
+
+            let newMb = {mb with InstancePathList=[trashPE]}
+            let trashFi = {Entry=trashEntry; Hash=mb.Hash; FName = trash.Name }
+
+            DInfo.updateFInfo repo Trash.udir "" trashFi |> ignore
+            afterRemove newMb upath
+            newMb
+
+        let insFounds, insRest = Blob.findInstance mb upath
+        let lnkFounds, lnkRest = Blob.findLink mb upath
+        
+        match insFounds, lnkFounds, insRest, lnkRest with
+        | [_], [], [], [] -> moveToTrash mb upath
+        | [_], [], _::_, _ ->
+            // instanceで、残りのinstanceもあるケース。
+            // 単に引数のファイルを消せば良い
+            justDeleteFile repo upath
+            let newMb = {mb with InstancePathList=insRest}
+            afterRemove newMb upath
+            newMb
+        |[_], [], [], lnkfirst::_ ->
+            // 最後のinstanceでリンクはあるケース。
+            // lnkfirstをインスタンスにしてから
+            let mb2 = toInstance repo mb lnkfirst.Path
+
+            // リンクになったupathファイルを削除
+            let inputLnk = toLinkPath upath
+            let lnkFound2, lnkRest2 = Blob.findLink mb2 inputLnk
+            // lnkFounds2は必ず [inputLnk]
+            justDeleteFile repo lnkFound2.Head.Path
+
+            let newMb = {mb2 with LinkPathList=lnkRest2}
+            afterRemove newMb lnkFound2.Head.Path
+            newMb
+        | [], [_], _, _ ->
+            // リンクのケース。インスタンスは必ずあるはず。
+            // リンクをただ消せば良い。
+            justDeleteFile repo upath
+            let newMb = {mb with LinkPathList=lnkRest}
+            afterRemove newMb upath
+            newMb
+        | _ -> failwith("Coruppted ManagedFile object")
+
+    let saveDInfo repo deletedUpath =
         DInfo.removeFileEntry repo deletedUpath |> ignore
-    
-    let moveToTrash mb upath =
-        let trash = Trash.findNewFI repo (UPath.fileName upath)
-        let trashUPath = Trash.upath trash.Name
-        ensureDir trash.Directory
 
-        let src = UPath.toFileInfo repo upath
-        File.Move(src.FullName, trash.FullName)
+    let remove repo mb upath =
+        removeCommon saveDInfo repo mb upath 
 
-        let trashEntry = {mb.InstancePathList.Head.Entry with EntryDate=DateTime.Now}
-        let trashPE  = {Path=trashUPath; Entry=trashEntry}
+    let removeNoDInfoUpdate repo mb upath =
+        removeCommon (fun _ _ -> ()) repo mb upath
 
-        let newMb = {mb with InstancePathList=[trashPE]}
-        let trashFi = {Entry=trashEntry; Hash=mb.Hash; FName = trash.Name }
-
-        DInfo.updateFInfo repo Trash.udir "" trashFi |> ignore
-        afterRemove newMb upath
-        newMb
-
-    let insFounds, insRest = Blob.findInstance mb upath
-    let lnkFounds, lnkRest = Blob.findLink mb upath
-    
-    match insFounds, lnkFounds, insRest, lnkRest with
-    | [_], [], [], [] -> moveToTrash mb upath
-    | [_], [], _::_, _ ->
-        // instanceで、残りのinstanceもあるケース。
-        // 単に引数のファイルを消せば良い
-        justDeleteFile repo upath
-        let newMb = {mb with InstancePathList=insRest}
-        afterRemove newMb upath
-        newMb
-    |[_], [], [], lnkfirst::_ ->
-        // 最後のinstanceでリンクはあるケース。
-        // lnkfirstをインスタンスにしてから
-        let mb2 = toInstance repo mb lnkfirst.Path
-
-        // リンクになったupathファイルを削除
-        let inputLnk = toLinkPath upath
-        let lnkFound2, lnkRest2 = Blob.findLink mb2 inputLnk
-        // lnkFounds2は必ず [inputLnk]
-        justDeleteFile repo lnkFound2.Head.Path
-
-        let newMb = {mb2 with LinkPathList=lnkRest2}
-        afterRemove newMb lnkFound2.Head.Path
-        newMb
-    | [], [_], _, _ ->
-        // リンクのケース。インスタンスは必ずあるはず。
-        // リンクをただ消せば良い。
-        justDeleteFile repo upath
-        let newMb = {mb with LinkPathList=lnkRest}
-        afterRemove newMb upath
-        newMb
-    | _ -> failwith("Coruppted ManagedFile object")
-
-/// トラッシュにあるblobを本当に削除する。
-/// 削除は安全のため、トラッシュにだけある状態でしか行えない。
-let removeTrash :RemoveTrash = fun repo mb ->
-    match mb.InstancePathList, mb.LinkPathList with
-    | [trash], [] ->
-        if not (Trash.isTrash trash.Path) then
-            failwith("Not trash blob2")
-        justDeleteFile repo trash.Path
-        DInfo.removeFileEntry repo trash.Path |> ignore
-        Blob.removeByHash repo mb.Hash
-    | _, _-> failwith("Not trash blob.")
+    /// トラッシュにあるblobを本当に削除する。
+    /// 削除は安全のため、トラッシュにだけある状態でしか行えない。
+    let removeTrash repo mb =
+        match mb.InstancePathList, mb.LinkPathList with
+        | [trash], [] ->
+            if not (Trash.isTrash trash.Path) then
+                failwith("Not trash blob2")
+            justDeleteFile repo trash.Path
+            DInfo.removeFileEntry repo trash.Path |> ignore
+            Blob.removeByHash repo mb.Hash
+        | _, _-> failwith("Not trash blob.")
 
 module Import =
 
@@ -474,12 +482,42 @@ let copyDir repo usrcDir udestDir =
     copyDirRec repo usrcDir udestDir
     
 
-/// ディレクトリを再帰的に移動。移動先にコンフリクトがある場合は移動しない。
-/// 
-// let moveDir repo usrcDir udestDir =
+/// ディレクトリを再帰的に移動。copyしてremoveしている。
+let moveDir repo usrcDir udestDir =
+    // fileに対してremoveを呼び出していく。dinfoはまとめて削除するので更新しない。
+    let rec removeFiles repo ucur =
+
+        let removeOne (finfo:FInfoT) =
+            let mb = Blob.fromHashMB repo finfo.Hash
+            Remove.removeNoDInfoUpdate repo mb (UPath.create ucur finfo.FName)
+
+        let curDI = UDir.toDI repo ucur
+
+        DInfo.ls repo ucur
+        |> List.map removeOne
+        |> ignore
+
+        curDI.EnumerateDirectories()
+        |> Seq.toList
+        |> List.iter (fun newdi ->
+                        removeFiles repo (UDir.child ucur newdi.Name))
+
+    let rec removeEmptyDirsAndDInfo repo ucur =
+        let curDI = UDir.toDI repo ucur
+
+        // 子供を先に削除
+        curDI.EnumerateDirectories()
+        |> Seq.toList
+        |> List.iter (fun newdi -> removeEmptyDirsAndDInfo repo (UDir.child ucur newdi.Name))
+
+        curDI.Delete(true)
+
+        let dirTxtFI = DInfo.dirFI repo ucur
+        dirTxtFI.Delete()
+        dirTxtFI.Directory.Delete(true)
 
 
-
-// TODO: direcotryのls
-// TODO: cp
+    copyDir repo usrcDir udestDir
+    removeFiles repo usrcDir
+    removeEmptyDirsAndDInfo repo usrcDir
 

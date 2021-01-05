@@ -32,6 +32,8 @@ listDupMB repo
 //
 // remove test
 //
+let remove = Remove.remove
+
 let mb = lsmb repo (u "imgs/美子ちゃん.pxv")
 
 let mb2 = remove repo mb (u "sns/美子ちゃん.pxv")
@@ -41,7 +43,7 @@ remove repo mb2 (u "imgs/美子ちゃん.pxv")
 let mb3 = lshmb repo "2b0b5"
 
 
-removeTrash repo mb3
+Remove.removeTrash repo mb3
 
 lsmb repo (u ".uit/trash/美子ちゃん.pxv")
 

@@ -61,6 +61,7 @@ linkLen unimb2 |> should 2
 //
 // removeのテスト
 //
+let remove = Remove.remove
 
 // 最後のInstanceを削除、Linkがちゃんと実体になるか。
 
@@ -138,4 +139,47 @@ let cbmb = lsmb repo (u "folder1/copy_dest/test2.txt")
 
 instLen cbmb |> should 1
 linkLen cbmb |> should 1
+
+
+//
+// moveDirのテスト
+//
+(*
+% ls -R testdata/init
+folder1		folder2		test1.txt
+
+testdata/init/folder1:
+test1.txt	test4.txt
+
+testdata/init/folder2:
+folder3		test2.txt	test3.txt
+
+testdata/init/folder2/folder3:
+another_test1.txt
+*)
+
+shellExecute "setuptest.sh" ""
+init repo
+
+uniqItAll repo
+
+moveDir repo (d "folder2") (d "folder1/move_dest")
+
+
+DInfo.ls repo (d "folder2") |> should []
+let mvfis = DInfo.ls repo (d "folder1/move_dest")
+
+// test2.txt, test3.txtが実体であるか？
+mvfis.Length |> should 2
+
+let shouldInstanceExist targetName finfos =
+    finfos |> List.find (fun finfo -> finfo.FName = targetName)
+    |> (fun finfo-> finfo.Entry.Type) |> should Instance
+
+shouldInstanceExist "test2.txt" mvfis
+shouldInstanceExist "test3.txt" mvfis
+
+let mvfis2 = DInfo.ls repo (d "folder1/move_dest/folder3")
+mvfis2.Length |> should 1
+mvfis2.Head.Entry.Type |> should Link
 
