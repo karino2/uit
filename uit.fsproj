@@ -1,3 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
@@ -5,6 +6,9 @@
     <RootNamespace>Uit</RootNamespace>
     <PackAsTool>true</PackAsTool>
   </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Argu" Version="6.1.1" />
+  </ItemGroup>
   <ItemGroup>
     <Compile Include="Common.fs" />
     <Compile Include="Blob.fs" />
