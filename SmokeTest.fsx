@@ -23,7 +23,7 @@ let d = UDir.fromUit
 let repo = { Path = DirectoryInfo "./testdata_work" }
 
 shellExecute "setuptest.sh" ""
-init repo
+initRecursive repo
 
 // 最初の状態の検査
 lsfi repo (u "test1.txt")
@@ -118,7 +118,7 @@ lsfi repo (u "folder2/folder3/another_test1.txt.uitlnk")
 // CopyDirのテスト
 // 
 shellExecute "setuptest.sh" ""
-init repo
+initRecursive repo
 
 uniqItAll repo
 
@@ -159,7 +159,7 @@ another_test1.txt
 *)
 
 shellExecute "setuptest.sh" ""
-init repo
+initRecursive repo
 
 uniqItAll repo
 

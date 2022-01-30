@@ -21,7 +21,7 @@ let repo = { Path = DirectoryInfo "./testdata_work" }
 // Init
 //
 
-init repo
+initRecursive repo
 
 
 

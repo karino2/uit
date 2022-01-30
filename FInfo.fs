@@ -85,6 +85,7 @@ module DInfo =
         toText fis
         |> saveText dirfi
 
+    // FInfoのリストを求めてそれを保存
     let computeAndSave repo udir=
         let fis = computeFrom repo udir
         save repo udir fis

@@ -77,8 +77,14 @@ let normalDirs (repo:Repo) =
                      | _-> true
                   )
 
-// fsharplint:disable Hints
+// 現在のdirectory直下だけを管理下に置く
 let init :Init = fun repo ->
+    initOneDir repo rootDir |> ignore
+
+
+// 再帰的にすべてのファイルを.uitの管理下に置く
+// fsharplint:disable Hints
+let initRecursive :Init = fun repo ->
     initOneDir repo rootDir |> ignore
     let rec initDirs (di:DirectoryInfo) =
         let udir = UDir.fromAbs repo di.FullName
