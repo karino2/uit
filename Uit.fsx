@@ -45,9 +45,10 @@ Ingest.ingest repo (ud "folder2")
 
 listMB repo
 
-listDupMB repo
+listDupMB repo |> List.length
 
-
+UDir.fromOSPath "./folder2"
+(ud "folder2")
 
 //
 // findTopUitDir
@@ -67,10 +68,15 @@ di.EnumerateDirectories(".uit")
 Seq.toList( di.Parent.EnumerateDirectories(".uit") ) = []
 
 
+init repo
+initRecursive { Path = DirectoryInfo "./testdata_work/folder2" }
 
 
 findTopUitDir di.Parent
 
+findCurrentUitDir di
+
+findCurrentUitDir (DirectoryInfo "./testdata_work/folder2/folder3")
 
 
 //

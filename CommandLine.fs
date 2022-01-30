@@ -1,5 +1,6 @@
 module CommandLine
 open System.IO
+open Common
 // fsharplint:disable Hints
 
 
@@ -29,3 +30,8 @@ let findCurrentUitDir (startDI: DirectoryInfo) =
             | _ -> (Some curDI)
     findUitDir startDI
 
+let currentRepo () =
+    let diopt = findCurrentUitDir (DirectoryInfo "./")
+    match diopt with
+    | (Some di) -> {Path = di}
+    | None -> failwith("No .uit directory found.")
