@@ -7,9 +7,6 @@ open System.IO
 open Action
 
 // fsharplint:disable Hints
-let deleteUitDir (repo:Repo) =
-    Directory.Delete(Path.Combine(repo.Path.FullName, ".uit") ,true)
-
 let mb2upaths mb =
     let ip =
         mb.InstancePathList

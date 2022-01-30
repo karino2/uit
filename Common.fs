@@ -8,6 +8,8 @@ type Hash = Hash of byte array
 // このPathは最後のスラッシュは含まない
 type Repo = { Path: DirectoryInfo }
 
+let deleteDotUit (repo:Repo) =
+    Directory.Delete(Path.Combine(repo.Path.FullName, ".uit") ,true)
 
 let diEquals (di1:DirectoryInfo) (di2:DirectoryInfo) =
     di1.FullName.TrimEnd(Path.DirectorySeparatorChar) = di2.FullName.TrimEnd(Path.DirectorySeparatorChar)

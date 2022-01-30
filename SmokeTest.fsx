@@ -183,3 +183,25 @@ let mvfis2 = DInfo.ls repo (d "folder1/move_dest/folder3")
 mvfis2.Length |> should 1
 mvfis2.Head.Entry.Type |> should Link
 
+//
+// Ingestのテスト
+//
+
+shellExecute "setuptest.sh" ""
+
+init repo
+
+let repoChild = { Path = DirectoryInfo "./testdata_work/folder2" }
+let childdir = (d "folder2")
+
+initRecursive repoChild
+
+listMB repo |> List.length |> should 1
+
+Ingest.ingest repo childdir
+
+// test1.txt
+// folder2/test2.txt
+// folder2/folder3/another_test1.txt
+listMB repo |> List.length |> should 3
+listDupMB repo |> List.length |> should 1

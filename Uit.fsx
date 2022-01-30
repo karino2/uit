@@ -6,6 +6,7 @@
 #load "Action.fs"
 #load "InteractiveUtils.fs"
 #load "CommandLine.fs"
+#load "TestUtils.fs"
 
 open Common
 open Blob
@@ -14,12 +15,43 @@ open Action
 open InteractiveUtils
 open System.IO
 open CommandLine
+open TestUtils
 
 let u = UPath.fromUit
+let ud = UDir.fromUit
 // fsharplint:disable Hints
 
 let repo = { Path = DirectoryInfo "./testdata_work" }
 
+shellExecute "setuptest.sh" ""
+
+
+//
+// Incoporateの開発用
+//
+
+init repo
+
+
+let repoChild = { Path = DirectoryInfo "./testdata_work/folder2" }
+
+initRecursive repoChild
+
+listMB repo |> List.length
+
+
+Ingest.ingest repo (ud "folder2")
+
+
+listMB repo
+
+listDupMB repo
+
+
+
+//
+// findTopUitDir
+//
 
 let di = DirectoryInfo "./testdata_work"
 di.Parent
@@ -113,6 +145,7 @@ let importDir = Import.importDir
 
 importDir repo (DirectoryInfo "/Users/arinokazuma/work/testdata_org") (UDir.fromUit "testdir")
 
+
 listDupMB repo |> List.iter dispMb
 
 lsa repo (u "scratch.fsx")
@@ -122,6 +155,7 @@ listMB repo
 
 let d = UDir.fromUit
 
+
 lsa repo (u "test1.txt")
 lsmb repo (u "test1.txt")
 
@@ -130,6 +164,7 @@ copyDir repo (d "folder2") (d "folder1/copy_dest")
 // Blob.fromHashMB repo hash
 
 listFiles (UDir.toDI repo (d "folder2"))
+
 
 (*
 想定するコマンドラインの使い方を考える。

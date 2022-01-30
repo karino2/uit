@@ -20,9 +20,6 @@ type ConvDirInstance = Repo -> UDir.T -> FInfoT list
 
 
 
-// Repo下のファイルを全てなめて.uit/hashと.uit/dirsを作る
-type Init = Repo -> unit
-
 //
 // 実装
 // 
@@ -77,14 +74,13 @@ let normalDirs (repo:Repo) =
                      | _-> true
                   )
 
-// 現在のdirectory直下だけを管理下に置く
-let init :Init = fun repo ->
-    initOneDir repo rootDir |> ignore
+/// 現在のdirectory直下だけを管理下に置く
+let init = fun repo ->
+    initOneDir repo rootDir
 
-
-// 再帰的にすべてのファイルを.uitの管理下に置く
+/// 再帰的にすべてのファイルを.uitの管理下に置く
 // fsharplint:disable Hints
-let initRecursive :Init = fun repo ->
+let initRecursive = fun repo ->
     initOneDir repo rootDir |> ignore
     let rec initDirs (di:DirectoryInfo) =
         let udir = UDir.fromAbs repo di.FullName
@@ -96,6 +92,73 @@ let initRecursive :Init = fun repo ->
     normalDirs repo
     |> Seq.toList
     |> List.iter initDirs
+
+/// 子供のディレクトリを現在の.uitに組み込む。
+/// 子供のディレクトリはinit済みで.uitを持っていることを前提。
+/// この関数を実行すると子供の.uitは無くなり、repoの.uitに統合される
+module Ingest =
+    let prefixPE dir (pe:PathEntry) =
+        let {Entry=ent; Path=(UPath.V pt)} = pe
+        let newpath = UPath.create dir pt
+        {Entry=ent; Path=newpath}
+
+    let prefixMB dir mb =
+        let ipl = mb.InstancePathList |> List.map (prefixPE dir)
+        let lpl = mb.LinkPathList |> List.map (prefixPE dir)
+        { Hash=mb.Hash; InstancePathList=ipl; LinkPathList = lpl}
+
+    let mergeMB mb1 mb2 =
+        let ipl = List.append mb1.InstancePathList mb2.InstancePathList
+        let lpl = List.append mb1.LinkPathList mb2.LinkPathList
+        assert( mb1.Hash = mb2.Hash )
+        { Hash=mb1.Hash; InstancePathList=ipl; LinkPathList = lpl}
+
+    let processOneMB repo childDir childMB =
+        let cmb = prefixMB childDir childMB
+        let newmb = match (Blob.fromHash repo cmb.Hash) with
+                    | ManagedBlob parent -> mergeMB parent cmb
+                    | UnmanagedBlob -> cmb
+        Blob.save repo newmb
+
+    let processMB repo childDir childRepo =
+        listMB childRepo
+        |> List.iter (processOneMB repo childDir)
+
+
+
+    /// relativeはDInfo.enumerateDirTxt のrelative。
+    /// 
+    /// relativeは２つのケースがある
+    /// 
+    /// - ルート ""
+    /// - 子供 "/folder3" など
+    /// 
+    /// ルートの時だけ/が無いことに注意。
+    let dirpath childdir relative =
+        match relative with
+        | "" -> childdir
+        | _ -> UDir.child childdir (relative.Substring 1)
+    
+    let moveDirTxt repo childdir (childDTPair: string*FileInfo) =
+        let (relative, srcfi) = childDTPair
+        let udir = dirpath childdir relative
+        // repo側のdir.txtのFI（まだ存在してないが）
+        let dtFI = DInfo.dirFI repo udir
+        ensureDir dtFI.Directory
+        File.Move(srcfi.FullName, dtFI.FullName)
+
+    let processFI repo childdir childRepo =
+        DInfo.enumerateDirTxt childRepo
+        |> Seq.iter (moveDirTxt repo childdir)
+
+
+    let ingest = fun repo childdir ->
+        let childDI = UDir.toDI repo childdir
+        let childRepo = { Path = childDI }
+        processMB repo childdir childRepo
+        processFI repo childdir childRepo
+        deleteDotUit childRepo
+
 
 /// internalで使われる、linkとinstanceの間を操作するモジュール
 /// 使う時にはいろいろな前提があるので注意を要する

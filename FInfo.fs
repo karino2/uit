@@ -78,6 +78,30 @@ module DInfo =
             |> Seq.toList
         else
             []
+    
+    let rec enumerateDirTxtUnder (di:DirectoryInfo) =
+        let fs = di.EnumerateFiles() |> Seq.filter (fun fi -> fi.Name = "dir.txt" )
+        di.EnumerateDirectories()
+        |> Seq.map enumerateDirTxtUnder
+        |> Seq.concat
+        |> Seq.append fs
+
+
+    /// repo内のdirs下のすべてのdir.txtのFileInfoを返す。
+    let enumerateDirTxtFI repo =
+        dirRootStr repo |> DirectoryInfo
+        |> enumerateDirTxtUnder
+
+    /// repo内のdirs下のすべてのdir.txtに関する以下のタプルを返す
+    /// (相対パス, FileInfo)
+    /// 相対パスは以下の２つの場合がある（一貫性がいまいち）
+    /// - ルート ""
+    /// - 子供 "/folder3" など
+    let enumerateDirTxt repo = 
+        let rootdi = dirRootStr repo |> DirectoryInfo
+        enumerateDirTxtUnder rootdi
+        |> Seq.map (fun fi-> (fi.Directory.FullName.Substring(rootdi.FullName.Length), fi))    
+
 
     let save repo udir fis =
         let dirfi = dirFI repo udir
