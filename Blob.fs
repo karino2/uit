@@ -125,7 +125,6 @@ let listHashWith repo (hashstr:string) =
         let dirname = hashstr.[0..1]
         let dirRoot = hashRootStr repo
         let dir = DirectoryInfo(Path.Combine(dirRoot, dirname))
-        printfn "%A %A" dir dir.Exists
         if not dir.Exists then
             []
         else

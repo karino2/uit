@@ -7,6 +7,8 @@ open System.IO
 open Action
 open Argu
 open CommandLine
+open Blob
+open FInfo
 
 // lsfi, lsmb, lsa, DInfo.ls
 
@@ -40,11 +42,11 @@ and CliArguments =
             | Init _ -> "Initialize current directory tree as uit managed repository."
             | InitAt _ -> "Init at specified directory and subdirectory as uit managed repository.\n.uit directory is createt at specify directory and not managed in current directory's .uit.\nAlways recursive."
             | Ingest _ -> "Ingest child directory managed by uit.\n .uit directory is merged to parent."
-            | Lsdup _ -> "Lsdup"
-            | Uniqit _ -> "UniqIt"
+            | Lsdup _ -> "List duplicate instanced files."
+            | Uniqit _ -> "Uniqify instanced file matched by hash pattern, then make all other files to link files."
             | Rm _ -> "Remove file"
-            | Ls _ -> "ls file" // lsfi and DInfo.ls
-            | Lsh _ -> "lsh hash"
+            | Ls _ -> "Show file info." // lsfi and DInfo.ls
+            | Lsh _ -> "Show hash info. Partially matched."
             | Mv _ -> "Move file or dir" // moveDir
             | Cp _ -> "Copy file or dir" // copyDir
             | Toi _ -> "ToInstance file"
@@ -64,25 +66,48 @@ let main argv =
                 initRecursive repo
             else
                 init repo |> ignore
+            0
         elif (results.Contains InitAt) then
             let target = results.GetResult(InitAt)
             let repo = {Path = DirectoryInfo target }            
             initRecursive repo
+            0
         elif (results.Contains Ingest) then
             let repo = currentRepo ()
             let targetDI = results.GetResult(Ingest) |> DirectoryInfo
             let target = UDir.fromDI repo targetDI
             Ingest.ingest repo target
-        0
+            0
+        elif (results.Contains Lsdup) then
+            let repo = currentRepo ()
+            listDupMB repo |> List.iter dispMb 
+            0
+        elif (results.Contains Uniqit) then
+            let repo = currentRepo ()
+            let hashpat = results.GetResult(Uniqit)
+            lshmb repo hashpat
+            |> uniqIt repo 
+            |> ignore
+            0
+        elif (results.Contains Ls) then
+            let repo = currentRepo ()
+            let upath = results.GetResult(Ls) |> FileInfo |> UPath.fromFileInfo repo
+            match DInfo.findFInfo repo upath with
+            | Some finfo ->
+                 dispFInfo finfo
+                 0
+            | None ->
+                 printfn "File not found."
+                 1
+        elif (results.Contains Lsh) then
+            let repo = currentRepo ()
+            let hashpat = results.GetResult(Lsh)
+            lshmb repo hashpat
+            |> dispMb
+            0
+        else
+            printfn "NYI"
+            1
     with e ->
         printfn "%s" e.Message
         1
-
-    (*
-    let usage = parser.PrintUsage()
-    printf "%s" usage
-    let repo = { Path = DirectoryInfo "./testdata_work" }
-    let mb = lsmb repo (UPath.fromUit "test1.txt")
-    dispMb mb
-    *)
-    

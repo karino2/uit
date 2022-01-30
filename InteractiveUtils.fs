@@ -24,6 +24,21 @@ let dispMb (mb:ManagedBlob) =
     mb.LinkPathList |> List.iter (fun pe->printf "%A " pe.Path)
     printfn ""
 
+let dispEntry (ent:Entry) =
+    match ent.Type with
+    | Instance -> printfn "Type: Instance"
+    | Link -> printfn "Type: Link"
+
+    printfn "LastModified: %s" (ent.LastModified.ToString ())
+    printfn "EntryDate: %s" (ent.EntryDate.ToString ())
+
+
+let dispFInfo (finfo:FInfoT) =
+    printfn "FName: %s" finfo.FName
+    printfn "Hash: %s" (hash2string finfo.Hash)
+    dispEntry finfo.Entry
+
+
 let lsa repo upath =
     let opbinfo = DInfo.findFInfo repo upath
                 |> Option.map (fun fi->fi.Hash)
