@@ -58,7 +58,7 @@ let main argv =
         if (results.Contains Init) then
             let initarg = results.GetResult(Init)
             let isrec = initarg.Contains Recursive
-            let repo = {Path = DirectoryInfo "./" }            
+            let repo = {Path = DirectoryInfo "." }            
 
             if isrec then
                 initRecursive repo

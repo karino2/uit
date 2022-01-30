@@ -34,7 +34,8 @@ module UDir =
                 let fromAbs = from.FullName
                 let repoAbs = repo.Path.FullName + "/"
                 if not (fromAbs.StartsWith repoAbs) then
-                    failwith "from is not under repo"
+                    sprintf "from is not under repo: from=%s, repo=%s\n" fromAbs repoAbs
+                    |> failwith
                 fromAbs.Substring repoAbs.Length
         relative
         |> fromUit
