@@ -1,9 +1,11 @@
 
+
 #load "Common.fs"
 #load "Blob.fs"
 #load "FInfo.fs"
 #load "Action.fs"
 #load "InteractiveUtils.fs"
+#load "CommandLine.fs"
 
 open Common
 open Blob
@@ -11,11 +13,33 @@ open FInfo
 open Action
 open InteractiveUtils
 open System.IO
+open CommandLine
 
 let u = UPath.fromUit
 // fsharplint:disable Hints
 
 let repo = { Path = DirectoryInfo "./testdata_work" }
+
+
+let di = DirectoryInfo "./testdata_work"
+di.Parent
+
+di.Parent.Parent.Parent.Parent // /Users
+di.Parent.Parent.Parent.Parent.Parent // /
+di.Parent.Parent.Parent.Parent.Parent.Parent //  nulll
+
+di.Parent.Parent.Parent.Parent.Parent.Parent = null
+
+di.EnumerateDirectories(".uit")
+
+Seq.toList( di.Parent.EnumerateDirectories(".uit") ) = []
+
+
+
+
+findTopUitDir di.Parent
+
+
 
 //
 // Init

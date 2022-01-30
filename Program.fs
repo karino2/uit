@@ -5,6 +5,7 @@ open Common
 open InteractiveUtils
 open System.IO
 open Argu
+open CommandLine
 
 // lsfi, lsmb, lsa, DInfo.ls
 
