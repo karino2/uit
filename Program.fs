@@ -163,6 +163,8 @@ let main argv =
             let isdironly = lsmargs.Contains DirOnly
 
             let dinfoDI = DInfo.dinfoDirPath repo udir |> DirectoryInfo
+            dinfoDI.EnumerateDirectories()
+            |> Seq.iter (fun di-> printfn "%s/" di.Name)
 
             if not isdironly then
                 DInfo.ls repo udir
