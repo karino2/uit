@@ -199,6 +199,9 @@ let main argv =
                 let orginfos = DInfo.ls repo uparent
                 let newinfo = FInfo.computeFrom fi
                 DInfo.save repo uparent (newinfo::orginfos)
+                let mb = finfo2mb repo uparent newinfo
+                Blob.save repo mb
+                printfn "Added: %s" (UPath.toUitStr upath)
                 0
         elif (results.Contains Mv) then
             let repo = currentRepo ()

@@ -38,20 +38,20 @@ let createEntries tp lastMod path hash =
     pe, finfo
 
 
+let finfo2mb repo udir (fi:FInfoT) =
+    let pe = finfo2pe udir fi
+    let bi = Blob.fromHash repo fi.Hash
+    match bi with
+    |ManagedBlob mb -> {mb with InstancePathList=pe::mb.InstancePathList }
+    |UnmanagedBlob -> {Hash =  fi.Hash; InstancePathList=[pe]; LinkPathList=[]}
 
 // Repo下のファイルの.uit/hash と .uit/dirsを作る。
 // まだhashなどが存在しない状態で行われるのでImportとは処理を分けておく
 // .uit/dirsを作る都合でファイル単位じゃなくてディレクトリ単位
 let initOneDir repo udir =
     let fis = DInfo.computeAndSave repo udir
-    let fi2binfo (fi:FInfoT) =
-        let pe = finfo2pe udir fi
-        let bi = Blob.fromHash repo fi.Hash
-        match bi with
-        |ManagedBlob mb -> {mb with InstancePathList=pe::mb.InstancePathList }
-        |UnmanagedBlob -> {Hash =  fi.Hash; InstancePathList=[pe]; LinkPathList=[]}
     fis
-    |> List.map fi2binfo
+    |> List.map (finfo2mb repo udir)
     |> List.iter (Blob.save repo)
     fis
 
