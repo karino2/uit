@@ -16,11 +16,13 @@ open FInfo
 [<CliPrefix(CliPrefix.None)>] 
 type InitArgs =
     |[<AltCommandLineAttribute("-r")>] Recursive
+    |[<AltCommandLineAttribute("-s")>] Silent
 
     interface IArgParserTemplate with
         member s.Usage =
             match s with
             | Recursive -> "Recursively init to sub folders."
+            | Silent -> "Suppress logging."
 
 and CliArguments =
     | [<CliPrefix(CliPrefix.None)>] Init of ParseResults<InitArgs>
@@ -99,10 +101,15 @@ let main argv =
         if (results.Contains Init) then
             let initarg = results.GetResult(Init)
             let isrec = initarg.Contains Recursive
-            let repo = {Path = DirectoryInfo "." }            
+            let logger =
+                if initarg.Contains Silent then
+                    (fun str->())
+                else
+                    (fun str->printf "%s" str)
+            let repo = {Path = DirectoryInfo "." }
 
             if isrec then
-                initRecursive repo
+                initRecursiveWithLogger repo logger
             else
                 init repo |> ignore
             0

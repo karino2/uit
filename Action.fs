@@ -80,10 +80,15 @@ let init = fun repo ->
 
 /// 再帰的にすべてのファイルを.uitの管理下に置く
 // fsharplint:disable Hints
-let initRecursive = fun repo ->
+let initRecursiveWithLogger = fun repo logger ->
+    let logdir fmt udir =
+        sprintf fmt (UDir.toOSPath udir) |> logger
+
+    logdir "init rootDir: %s\n" rootDir
     initOneDir repo rootDir |> ignore
     let rec initDirs (di:DirectoryInfo) =
         let udir = UDir.fromAbs repo di.FullName
+        logdir "init: %s\n" udir
         initOneDir repo udir |> ignore
         di.EnumerateDirectories()
         |> Seq.toList
@@ -92,6 +97,8 @@ let initRecursive = fun repo ->
     normalDirs repo
     |> Seq.toList
     |> List.iter initDirs
+
+let initRecursive = fun repo -> initRecursiveWithLogger repo (fun str->())
 
 /// 子供のディレクトリを現在の.uitに組み込む。
 /// 子供のディレクトリはinit済みで.uitを持っていることを前提。

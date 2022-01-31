@@ -25,6 +25,9 @@ let repo = { Path = DirectoryInfo "./testdata_work" }
 
 shellExecute "setuptest.sh" ""
 
+// loggerのテスト
+
+initRecursiveWithLogger repo (fun str -> printf "%s" str)
 
 //
 // Incoporateの開発用
