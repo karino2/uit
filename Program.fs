@@ -15,12 +15,14 @@ open FInfo
 
 type InitArgs =
     |[<AltCommandLineAttribute("-r")>] Recursive
+    |[<AltCommandLineAttribute("-e")>] Empty
     |[<AltCommandLineAttribute("-s")>] Silent
 
     interface IArgParserTemplate with
         member s.Usage =
             match s with
             | Recursive -> "Recursively init to sub folders."
+            | Empty -> "Init as empty. No file is managed."
             | Silent -> "Suppress logging."
 type InitAtArgs =
     |[<AltCommandLineAttribute("-s")>] Silent
@@ -127,10 +129,14 @@ let main argv =
         if (results.Contains Init) then
             let initarg = results.GetResult(Init)
             let isrec = initarg.Contains Recursive
-            let logger = getLogger (initarg.Contains InitArgs.Silent)
+            let isempty = initarg.Contains Empty
+            let silent = (initarg.Contains InitArgs.Silent)
             let repo = {Path = DirectoryInfo "." }
 
-            if isrec then
+            if isempty then
+                initEmpty repo
+            elif isrec then
+                let logger = getLogger silent
                 initRecursiveWithLogger repo logger
             else
                 init repo |> ignore

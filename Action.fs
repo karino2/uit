@@ -45,6 +45,20 @@ let finfo2mb repo udir (fi:FInfoT) =
     |ManagedBlob mb -> {mb with InstancePathList=pe::mb.InstancePathList }
     |UnmanagedBlob -> {Hash =  fi.Hash; InstancePathList=[pe]; LinkPathList=[]}
 
+/// 壊れファイルがある時など用の、なんのファイルも持たないinit。
+/// ファイルは手動でaddで一つずつ足すケースを想定
+let initEmpty repo =
+    // dir.txtを保存して
+    let dirfi = DInfo.dirFI repo rootDir
+    dirfi.Directory |> ensureDir
+    File.WriteAllText(dirfi.FullName, "")
+    
+    // .uit/hashディレクトリを作る
+    UDir.fromUit ".uit/hash"
+    |> UDir.toDI repo
+    |> ensureDir
+
+
 // Repo下のファイルの.uit/hash と .uit/dirsを作る。
 // まだhashなどが存在しない状態で行われるのでImportとは処理を分けておく
 // .uit/dirsを作る都合でファイル単位じゃなくてディレクトリ単位
