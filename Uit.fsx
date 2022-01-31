@@ -30,16 +30,27 @@ shellExecute "setuptest.sh" ""
 initRecursiveWithLogger repo (fun str -> printf "%s" str)
 
 //
-// Incoporateの開発用
+// childが必要な類のテスト
 //
-
-init repo
-
 
 let repoChild = { Path = DirectoryInfo "./testdata_work/folder2" }
 
+// dotUitExistのテスト
+
+
+init repo
+
 initRecursive repoChild
 
+Ingest.dotUitExist (DirectoryInfo "./testdata_work/folder2")
+Ingest.dotUitExist (DirectoryInfo "./testdata_work/folder1")
+Ingest.dotUitExist (DirectoryInfo ".")
+
+
+ 
+//
+// Incoporateの開発用
+//
 listMB repo |> List.length
 
 

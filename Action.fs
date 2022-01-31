@@ -158,9 +158,15 @@ module Ingest =
         DInfo.enumerateDirTxt childRepo
         |> Seq.iter (moveDirTxt repo childdir)
 
+    let dotUitExist (di:DirectoryInfo) =
+        Path.Combine(di.FullName, ".uit")
+        |> DirectoryInfo |> (fun uitdi->uitdi.Exists)
 
     let ingest = fun repo childdir ->
         let childDI = UDir.toDI repo childdir
+        if not (dotUitExist childDI) then
+            sprintf "child directory does not contains .uit: %s \n" childDI.FullName
+            |> failwith 
         let childRepo = { Path = childDI }
         processMB repo childdir childRepo
         processFI repo childdir childRepo
