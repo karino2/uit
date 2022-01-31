@@ -33,6 +33,7 @@ and CliArguments =
     | [<CliPrefix(CliPrefix.None)>] Rm of path:string
     | [<CliPrefix(CliPrefix.None)>] Ls of path:string // lsfi and DInfo.ls
     | [<CliPrefix(CliPrefix.None)>] Lsh of hash:string
+    | [<CliPrefix(CliPrefix.None)>] Add of path:string // Add one unmanaged file to managed.
     | [<CliPrefix(CliPrefix.None)>] Mv of src:string * dest:string // moveDir
     | [<CliPrefix(CliPrefix.None)>] Cp of src:string * dest:string // copyDir
     | [<CliPrefix(CliPrefix.None)>] Inst of path:string
@@ -50,6 +51,7 @@ and CliArguments =
             | Rm _ -> "Remove file. If there is no other hash file, move to trash. File data must exist somewhere."
             | Ls _ -> "Show file info." // lsfi and DInfo.ls
             | Lsh _ -> "Show hash info. Partially matched."
+            | Add _ -> "Add one unmanaged file to managed."
             | Mv _ -> "Move file or dir" // moveDir
             | Cp _ -> "Copy file or dir" // copyDir
             | Inst _ -> "To instance file. If there is another instance, make that file to link and move that file instance to target."
@@ -161,6 +163,20 @@ let main argv =
             | None ->
                 eprintfn "File not managed."
                 1
+        elif (results.Contains Add) then
+            let repo = currentRepo ()
+            let fi = results.GetResult(Add) |> FileInfo
+            let upath = UPath.fromFileInfo repo fi
+            match DInfo.findFInfo repo upath with
+            | Some _ ->            
+                eprintfn "File already managed: %A" upath
+                1
+            | None ->
+                let uparent = (parentDir upath)
+                let orginfos = DInfo.ls repo uparent
+                let newinfo = FInfo.computeFrom fi
+                DInfo.save repo uparent (newinfo::orginfos)
+                0
         elif (results.Contains Mv) then
             let repo = currentRepo ()
             let (srcudir, destudir) = results.GetResult(Mv) |> toUDirPair repo
