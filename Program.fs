@@ -162,6 +162,17 @@ let main argv =
             let (srcudir, destudir) = results.GetResult(Cp) |> toUDirPair repo
             copyDir repo srcudir destudir
             0
+        elif (results.Contains Inst) then
+            let repo = currentRepo ()
+            let upath = results.GetResult(Inst) |> toUPath repo
+            match DInfo.findFInfo repo upath with
+            | Some finfo ->
+                let mb = Blob.fromHashMB repo finfo.Hash
+                toInstance repo mb upath |> ignore
+                0
+            | None ->
+                printfn "File not managed."
+                1
         elif (results.Contains Import) then
             let repo = currentRepo ()
             results.GetResult(Import)
