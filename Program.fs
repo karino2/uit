@@ -13,7 +13,6 @@ open FInfo
 // lsfi, lsmb, lsa, DInfo.ls
 
 
-[<CliPrefix(CliPrefix.None)>] 
 type InitArgs =
     |[<AltCommandLineAttribute("-r")>] Recursive
     |[<AltCommandLineAttribute("-s")>] Silent
