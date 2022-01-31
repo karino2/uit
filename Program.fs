@@ -34,6 +34,7 @@ and CliArguments =
     | [<CliPrefix(CliPrefix.None)>] Mv of src:string * dest:string // moveDir
     | [<CliPrefix(CliPrefix.None)>] Cp of src:string * dest:string // copyDir
     | [<CliPrefix(CliPrefix.None)>] Inst of path:string
+    | [<CliPrefix(CliPrefix.None)>] Root
     | [<CliPrefix(CliPrefix.None)>] Import of src:string * dest:string // importFile, importDir
 
     interface IArgParserTemplate with
@@ -50,6 +51,7 @@ and CliArguments =
             | Mv _ -> "Move file or dir" // moveDir
             | Cp _ -> "Copy file or dir" // copyDir
             | Inst _ -> "To instance file. If there is another instance, make that file to link and move that file instance to target."
+            | Root -> "Show current .uit path."
             | Import _ -> "Import outer unmanaged dir or file" // importFile, importDir
 
 
@@ -172,6 +174,15 @@ let main argv =
                 0
             | None ->
                 printfn "File not managed."
+                1
+        elif (results.Contains Root) then
+            let diopt = findCurrentUitDir (DirectoryInfo ".")
+            match diopt with
+            | (Some di) ->
+                printfn "%s" di.FullName 
+                0
+            | None -> 
+                printfn ".uit not found."
                 1
         elif (results.Contains Import) then
             let repo = currentRepo ()
