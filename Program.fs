@@ -23,6 +23,15 @@ type InitArgs =
             match s with
             | Recursive -> "Recursively init to sub folders."
             | Silent -> "Suppress logging."
+type InitAtArgs =
+    |[<AltCommandLineAttribute("-s")>] Silent
+    |[<Mandatory; MainCommand; ExactlyOnce; Last>] Path of path:string
+
+    interface IArgParserTemplate with
+        member s.Usage =
+            match s with
+            | Path _ -> "Target path."
+            | Silent -> "Suppress logging."
 and LsmArgs =
     |[<AltCommandLineAttribute("-d")>] DirOnly
     |[<Mandatory; MainCommand; ExactlyOnce; Last>] Path of path:string
@@ -34,7 +43,7 @@ and LsmArgs =
 
 and CliArguments =
     | [<CliPrefix(CliPrefix.None)>] Init of ParseResults<InitArgs>
-    | [<CliPrefix(CliPrefix.None)>] InitAt of path:string
+    | [<CliPrefix(CliPrefix.None)>] InitAt of ParseResults<InitAtArgs>
     | [<CliPrefix(CliPrefix.None)>] Ingest of child:string
     | [<CliPrefix(CliPrefix.None)>] Lsdup
     | [<CliPrefix(CliPrefix.None)>] Uniqit of hash:string
@@ -107,17 +116,19 @@ let main argv =
                 Import.importFile repo fi destupath |> ignore
                 0
 
+    let getLogger silent =
+        if silent then
+            (fun str->())
+        else
+            (fun str->printf "%s" str)
+
     let parser = ArgumentParser.Create<CliArguments>(programName = "uit")
     try
         let results = parser.ParseCommandLine(inputs = argv, raiseOnUsage = true)
         if (results.Contains Init) then
             let initarg = results.GetResult(Init)
             let isrec = initarg.Contains Recursive
-            let logger =
-                if initarg.Contains Silent then
-                    (fun str->())
-                else
-                    (fun str->printf "%s" str)
+            let logger = getLogger (initarg.Contains InitArgs.Silent)
             let repo = {Path = DirectoryInfo "." }
 
             if isrec then
@@ -126,9 +137,11 @@ let main argv =
                 init repo |> ignore
             0
         elif (results.Contains InitAt) then
-            let target = results.GetResult(InitAt)
-            let repo = {Path = DirectoryInfo target }            
-            initRecursive repo
+            let atarg = results.GetResult(InitAt)
+            let target = atarg.GetResult(InitAtArgs.Path)
+            let logger = getLogger (atarg.Contains InitAtArgs.Silent)
+            let repo = {Path = DirectoryInfo target }
+            initRecursiveWithLogger repo logger
             0
         elif (results.Contains Ingest) then
             let repo = currentRepo ()
