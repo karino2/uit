@@ -52,7 +52,7 @@ and CliArguments =
     | [<CliPrefix(CliPrefix.None)>] Ls of path:string // lsfi and DInfo.ls
     | [<CliPrefix(CliPrefix.None)>] Lsm of ParseResults<LsmArgs> // list managed
     | [<CliPrefix(CliPrefix.None)>] Lsh of hash:string
-    | [<CliPrefix(CliPrefix.None)>] Add of path:string // Add one unmanaged file to managed.
+    | [<CliPrefix(CliPrefix.None)>] Add of path:string list // Add unmanaged files to managed.
     | [<CliPrefix(CliPrefix.None)>] Mv of src:string * dest:string // moveDir
     | [<CliPrefix(CliPrefix.None)>] Cp of src:string * dest:string // copyDir
     | [<CliPrefix(CliPrefix.None)>] Inst of path:string
@@ -71,7 +71,7 @@ and CliArguments =
             | Ls _ -> "Show file info." // lsfi and DInfo.ls
             | Lsm _ -> "List managed file and dirs."
             | Lsh _ -> "Show hash info. Partially matched."
-            | Add _ -> "Add one unmanaged file to managed."
+            | Add _ -> "Add unmanaged files to managed."
             | Mv _ -> "Move file or dir" // moveDir
             | Cp _ -> "Copy file or dir" // copyDir
             | Inst _ -> "To instance file. If there is another instance, make that file to link and move that file instance to target."
@@ -86,7 +86,7 @@ let main argv =
     let toUPath repo file = 
         FileInfo file |> UPath.fromFileInfo repo
 
-    let toUDir repo dirstr =
+    let toUDir repo dirstr =        
         let di = DirectoryInfo dirstr
         if not di.Exists then
             sprintf "Directory %s not exists" dirstr
@@ -143,7 +143,7 @@ let main argv =
             0
         elif (results.Contains InitAt) then
             let atarg = results.GetResult(InitAt)
-            let target = atarg.GetResult(InitAtArgs.Path)
+            let target = atarg.GetResult(InitAtArgs.Path) |> trimEnd "/"
             let logger = getLogger (atarg.Contains InitAtArgs.Silent)
             let repo = {Path = DirectoryInfo target }
             initRecursiveWithLogger repo logger
@@ -209,21 +209,28 @@ let main argv =
                 1
         elif (results.Contains Add) then
             let repo = currentRepo ()
-            let fi = results.GetResult(Add) |> FileInfo
-            let upath = UPath.fromFileInfo repo fi
-            match DInfo.findFInfo repo upath with
-            | Some _ ->            
-                eprintfn "File already managed: %A" upath
-                1
-            | None ->
-                let uparent = (parentDir upath)
-                let orginfos = DInfo.ls repo uparent
-                let newinfo = FInfo.computeFrom fi
-                DInfo.save repo uparent (newinfo::orginfos)
-                let mb = finfo2mb repo uparent newinfo
-                Blob.save repo mb
-                printfn "Added: %s" (UPath.toUitStr upath)
-                0
+
+            let addOne fi =
+                let upath = UPath.fromFileInfo repo fi
+                match DInfo.findFInfo repo upath with
+                | Some _ ->            
+                    eprintfn "File already managed: %A" upath
+                    1
+                | None ->
+                    let uparent = (parentDir upath)
+                    let orginfos = DInfo.ls repo uparent
+                    let newinfo = FInfo.computeFrom fi
+                    DInfo.save repo uparent (newinfo::orginfos)
+                    let mb = finfo2mb repo uparent newinfo
+                    Blob.save repo mb
+                    printfn "Added: %s" (UPath.toUitStr upath)
+                    0
+
+            results.GetResult(Add)
+            |> List.map FileInfo
+            |> List.map addOne
+            |> List.sum
+
         elif (results.Contains Mv) then
             let repo = currentRepo ()
             let (srcudir, destudir) = results.GetResult(Mv) |> toUDirPair repo

@@ -18,6 +18,13 @@ let ensureDir (di: DirectoryInfo) =
     if not di.Exists then
         Directory.CreateDirectory di.FullName |> ignore
 
+let trimEnd (pat:string) (target:string) =
+    if target.EndsWith(pat) then
+        target.Remove(target.LastIndexOf pat)
+    else
+        target
+
+
 // スラッシュ無しで始まりスラッシュ無しで終わる。
 // rootは""で表す。
 module UDir =
@@ -31,7 +38,7 @@ module UDir =
             if diEquals repo.Path from then
                 ""
             else
-                let fromAbs = from.FullName
+                let fromAbs = trimEnd "/" from.FullName
                 let repoAbs = repo.Path.FullName + "/"
                 if not (fromAbs.StartsWith repoAbs) then
                     sprintf "from is not under repo: from=%s, repo=%s\n" fromAbs repoAbs
@@ -60,15 +67,6 @@ module UDir =
 
     let ensureExists repo udir =
         ensureDir (toDI repo udir)
-
-
-
-let trimEnd (pat:string) (target:string) =
-    if target.EndsWith(pat) then
-        target.Remove(target.LastIndexOf pat)
-    else
-        target
-
 
 // パス区切りはスラッシュで。uitのrootからの相対パスを表す。
 module UPath =
