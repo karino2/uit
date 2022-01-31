@@ -23,6 +23,14 @@ type InitArgs =
             match s with
             | Recursive -> "Recursively init to sub folders."
             | Silent -> "Suppress logging."
+and LsmArgs =
+    |[<AltCommandLineAttribute("-d")>] DirOnly
+    |[<Mandatory; MainCommand; ExactlyOnce; Last>] Path of path:string
+    interface IArgParserTemplate with
+        member s.Usage =
+            match s with
+            | Path _ -> "Target path."
+            | DirOnly -> "Show directory only."
 
 and CliArguments =
     | [<CliPrefix(CliPrefix.None)>] Init of ParseResults<InitArgs>
@@ -32,6 +40,7 @@ and CliArguments =
     | [<CliPrefix(CliPrefix.None)>] Uniqit of hash:string
     | [<CliPrefix(CliPrefix.None)>] Rm of path:string
     | [<CliPrefix(CliPrefix.None)>] Ls of path:string // lsfi and DInfo.ls
+    | [<CliPrefix(CliPrefix.None)>] Lsm of ParseResults<LsmArgs> // list managed
     | [<CliPrefix(CliPrefix.None)>] Lsh of hash:string
     | [<CliPrefix(CliPrefix.None)>] Add of path:string // Add one unmanaged file to managed.
     | [<CliPrefix(CliPrefix.None)>] Mv of src:string * dest:string // moveDir
@@ -50,6 +59,7 @@ and CliArguments =
             | Uniqit _ -> "Uniqify instanced file matched by hash pattern, then make all other files to link files."
             | Rm _ -> "Remove file. If there is no other hash file, move to trash. File data must exist somewhere."
             | Ls _ -> "Show file info." // lsfi and DInfo.ls
+            | Lsm _ -> "List managed file and dirs."
             | Lsh _ -> "Show hash info. Partially matched."
             | Add _ -> "Add one unmanaged file to managed."
             | Mv _ -> "Move file or dir" // moveDir
@@ -146,6 +156,19 @@ let main argv =
             | None ->
                  eprintfn "File not managed."
                  1
+        elif (results.Contains Lsm) then
+            let repo = currentRepo ()
+            let lsmargs = results.GetResult(Lsm)
+            let udir = lsmargs.GetResult(Path) |> toUDir repo            
+            let isdironly = lsmargs.Contains DirOnly
+
+            let dinfoDI = DInfo.dinfoDirPath repo udir |> DirectoryInfo
+
+            if not isdironly then
+                DInfo.ls repo udir
+                |> List.iter (fun finfo-> printfn "%s" finfo.FName) 
+            0
+
         elif (results.Contains Lsh) then
             let repo = currentRepo ()
             let hashpat = results.GetResult(Lsh)

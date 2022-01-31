@@ -48,14 +48,18 @@ module DInfo =
     let dirRootStr (repo:Repo) =
         Path.Combine( repo.Path.FullName, ".uit", "dirs")
 
-    let dirFI repo udir =
+    // udirに対応した、dir.txtの置いてあるディレクトリのパスを返す（dir.txtは含まない)
+    let dinfoDirPath repo udir =   
         let dirRoot = dirRootStr repo
         let relative = UDir.toOSPath udir
-        let dir = 
-            if String.IsNullOrEmpty relative then
-                dirRoot
-            else
-                Path.Combine(dirRoot, relative)
+        if String.IsNullOrEmpty relative then
+            dirRoot
+        else
+            Path.Combine(dirRoot, relative)
+
+    /// udirに対応したdir.txtのFileInfoを返す
+    let dirFI repo udir =
+        let dir = dinfoDirPath repo udir
         Path.Combine(dir, "dir.txt") |> FileInfo
 
     /// udirのdir.txtを読んでDInfoを返す
