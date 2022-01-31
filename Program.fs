@@ -86,7 +86,7 @@ let main argv =
             // file import
             let fi = FileInfo src
             if not fi.Exists then
-                printfn "src %s not exists." src
+                eprintfn "src %s not exists." src
                 1
             else
                 let destupath = toUPath repo dest
@@ -135,7 +135,7 @@ let main argv =
                  dispFInfo finfo
                  0
             | None ->
-                 printfn "File not managed."
+                 eprintfn "File not managed."
                  1
         elif (results.Contains Lsh) then
             let repo = currentRepo ()
@@ -152,7 +152,7 @@ let main argv =
                 Remove.remove repo mb upath |> ignore
                 0
             | None ->
-                printfn "File not managed."
+                eprintfn "File not managed."
                 1
         elif (results.Contains Mv) then
             let repo = currentRepo ()
@@ -173,7 +173,7 @@ let main argv =
                 toInstance repo mb upath |> ignore
                 0
             | None ->
-                printfn "File not managed."
+                eprintfn "File not managed."
                 1
         elif (results.Contains Root) then
             let diopt = findCurrentUitDir (DirectoryInfo ".")
@@ -182,7 +182,7 @@ let main argv =
                 printfn "%s" di.FullName 
                 0
             | None -> 
-                printfn ".uit not found."
+                eprintfn ".uit not found."
                 1
         elif (results.Contains Import) then
             let repo = currentRepo ()
