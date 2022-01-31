@@ -133,6 +133,7 @@ let main argv =
         elif (results.Contains Ingest) then
             let repo = currentRepo ()
             let target = results.GetResult(Ingest) |> toUDir repo
+            printfn "Ingest child: %s" (UDir.toUitStr target)
             Ingest.ingest repo target
             0
         elif (results.Contains Lsdup) then
