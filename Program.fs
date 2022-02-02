@@ -146,6 +146,7 @@ let main argv =
             let target = atarg.GetResult(InitAtArgs.Path) |> trimEnd "/"
             let logger = getLogger (atarg.Contains InitAtArgs.Silent)
             let repo = {Path = DirectoryInfo target }
+            sprintf "InitAt: %s\n" target |> logger
             initRecursiveWithLogger repo logger
             0
         elif (results.Contains Ingest) then
