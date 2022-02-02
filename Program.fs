@@ -35,7 +35,7 @@ type InitAtArgs =
             | Silent -> "Suppress logging."
 and LsmArgs =
     |[<AltCommandLineAttribute("-d")>] DirOnly
-    |[<Mandatory; MainCommand; ExactlyOnce; Last>] Path of path:string
+    |[<MainCommand; Last>] Path of path:string
     interface IArgParserTemplate with
         member s.Usage =
             match s with
@@ -195,7 +195,7 @@ let main argv =
         elif (results.Contains Lsm) then
             let repo = currentRepo ()
             let lsmargs = results.GetResult(Lsm)
-            let udir = lsmargs.GetResult(Path) |> toUDir repo            
+            let udir = lsmargs.GetResult(Path, ".") |> toUDir repo            
             let isdironly = lsmargs.Contains DirOnly
 
             let dinfoDI = DInfo.dinfoDirPath repo udir |> DirectoryInfo
