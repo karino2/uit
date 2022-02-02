@@ -41,12 +41,19 @@ and LsmArgs =
             match s with
             | Path _ -> "Target path."
             | DirOnly -> "Show directory only."
+and LsdupArgs =
+    |[<AltCommandLineAttribute("-h")>] HashOnly
+
+    interface IArgParserTemplate with
+        member s.Usage =
+            match s with
+            | HashOnly -> "Print hash only."
 
 and CliArguments =
     | [<CliPrefix(CliPrefix.None)>] Init of ParseResults<InitArgs>
     | [<CliPrefix(CliPrefix.None)>] InitAt of ParseResults<InitAtArgs>
     | [<CliPrefix(CliPrefix.None)>] Ingest of child:string
-    | [<CliPrefix(CliPrefix.None)>] Lsdup
+    | [<CliPrefix(CliPrefix.None)>] Lsdup of ParseResults<LsdupArgs>
     | [<CliPrefix(CliPrefix.None)>] Uniqit of hash:string
     | [<CliPrefix(CliPrefix.None)>] Rm of path:string
     | [<CliPrefix(CliPrefix.None)>] Ls of path:string // lsfi and DInfo.ls
@@ -157,7 +164,16 @@ let main argv =
             0
         elif (results.Contains Lsdup) then
             let repo = currentRepo ()
-            listDupMB repo |> List.iter dispMb 
+            let hashOnly = results.GetResult(Lsdup).Contains HashOnly
+            let dupmbs = listDupMB repo
+            if hashOnly then
+                dupmbs
+                |> List.iter (fun mb ->
+                                 hash2string mb.Hash
+                                 |> printfn "%s"
+                            )
+            else
+                dupmbs |> List.iter dispMb 
             0
         elif (results.Contains Uniqit) then
             let repo = currentRepo ()
