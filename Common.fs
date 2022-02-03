@@ -227,9 +227,10 @@ let isEmptyZip (zipfi:FileInfo) =
     zipfile.Entries |> Seq.isEmpty
 
 let removeEntry (zipfi:FileInfo) (entname:string) =
+    let tmppath = Path.Combine(zipfi.Directory.FullName, "uit_tmp.zip")
     (
         use org = ZipFile.Open(zipfi.FullName, ZipArchiveMode.Read)
-        use tmp = ZipFile.Open("uit_tmp.zip", ZipArchiveMode.Create)
+        use tmp = ZipFile.Open(tmppath, ZipArchiveMode.Create)
         org.Entries
         |> Seq.filter (fun ent-> ent.Name <> entname)
         |> Seq.iter(fun ent ->
@@ -237,7 +238,7 @@ let removeEntry (zipfi:FileInfo) (entname:string) =
                 copyent ent newent
         )
     )
-    File.Move("uit_tmp.zip", zipfi.FullName, true)
+    File.Move(tmppath, zipfi.FullName, true)
 
 let saveTextZipUpdate (zipfi:FileInfo) (entname:string) (text:string) =
     (
