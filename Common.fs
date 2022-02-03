@@ -245,6 +245,7 @@ let saveTextZipUpdate (zipfi:FileInfo) (entname:string) (text:string) =
     use tmp = ZipFile.Open("uit_tmp.zip", ZipArchiveMode.Create)
     let replaced = 
         org.Entries
+        |> Seq.filter (fun ent -> ent.Name.EndsWith ".txt" )
         |> Seq.filter (fun ent->
             if ent.Name = entname then
                 let newent = tmp.CreateEntry entname
