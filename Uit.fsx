@@ -25,6 +25,7 @@ let repo = { Path = DirectoryInfo "./testdata_work" }
 
 shellExecute "setuptest.sh" ""
 
+
 // loggerのテスト
 
 initRecursiveWithLogger repo (fun str -> printf "%s" str)
@@ -67,6 +68,80 @@ UDir.fromOSPath "./folder2"
 open System
 
 DateTime.Now.ToString()
+
+
+// zip周りのテスト
+#r "nuget: System.IO.Compression"
+#r "nuget: System.IO.Compression.ZipFile"
+open System.IO.Compression
+
+initRecursive repo
+
+// 手でhash/29をzipしていろいろ調査。
+
+
+let binary = string2bytes "2925b1cac7ccce4fdfe13dc51c3963d82fea3cee31db34037a992d9bb4eeb92a"
+let binary2 = string2bytes "2925b1cac7ccce4fdfe13dc51c3963d82fea3cee31db34037a992d9bb4eeb92b"
+
+let hash1 = (Hash binary)
+let hash2 = (Hash binary2)
+
+
+
+let zipfile = hashReadZip repo hash1
+
+
+hashEntry zipfile hash1
+hashEntry zipfile hash2
+
+
+let (Some ent) = hashEntry zipfile hash1
+
+
+readlines ent
+
+let fi = DirectoryInfo(hashRootStr(repo)).EnumerateFiles() |> Seq.head
+ 
+
+// saveTextZip関連
+
+
+let tempfi1 = FileInfo "./testdata_work/test_tmp1.zip"
+saveTextZip tempfi1 "hoge.txt" "fugafuga\nhegahega"
+saveTextZip tempfi1 "added.txt" "this is added"
+saveTextZip tempfi1 "hoge.txt" "Updated!\nfugafuga\nhegahega"
+
+
+tempfi1.Length
+removeEntry tempfi1 "hoge.txt"
+
+// tempfi作り直さないと反映されない
+tempfi1.Length
+removeEntry tempfi1 "added.txt"
+
+
+isEmptyZip tempfi1
+
+
+let tmpzip = ZipFile.Open(tempfi1.FullName, ZipArchiveMode.Read)
+tmpzip.Entries |> Seq.isEmpty
+
+tmpzip.Dispose()
+
+tempfi1.Length
+
+tempfi1.Exists
+
+tempfi1.Name
+
+trimEnd ".zip" tempfi1.Name
+
+
+listHashWith repo "3057"
+
+listMB repo
+
+lshmb repo "3057"
 
 //
 // findTopUitDir

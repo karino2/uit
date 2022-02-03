@@ -2,6 +2,7 @@ module Common
 
 open System
 open System.IO
+open System.IO.Compression
 
 type Hash = Hash of byte array
 
@@ -86,9 +87,22 @@ module UPath =
             failwith "from is not under repo"
         V (fromAbs.Substring repoAbs.Length)
 
+    let toFullPath  (repo:Repo) (V value) =
+        Path.Combine(repo.Path.FullName, value)
 
-    let toFileInfo (repo:Repo) (V value) =
-        FileInfo(Path.Combine(repo.Path.FullName, value))
+    let toFileInfo repo upath =
+        toFullPath repo upath |> FileInfo
+
+    let createZip  repo upath =
+        let path = toFullPath repo upath
+        ZipFile.Open(path, ZipArchiveMode.Create)
+
+    let openReadZip repo upath = 
+        let path = toFullPath repo upath
+        if FileInfo(path).Exists then
+            Some (ZipFile.Open(path, ZipArchiveMode.Read))
+        else
+            None
 
     let fileName upath =
         let upathstr = toUitStr upath
@@ -164,19 +178,110 @@ let string2bytes (sbytes: string) =
     tobytelist sbytes
     |> List.toArray
 
-
-let hashDir hash =
+let hashZipPath hash = 
     let (Hash bytes) = hash
-    (UDir.fromUit (sprintf ".uit/hash/%02x" bytes.[0]))
+    sprintf ".uit/hash/%02x.zip" bytes.[0]
+    |> UPath.fromUit
 
+let hashZipFI repo hash = 
+    hashZipPath hash |> UPath.toFileInfo repo
 
-let hashPath hash =
-    let (Hash bytes) = hash
-    let dir = hashDir hash |> UDir.toUitStr
-    (UPath.fromUit (sprintf "%s/%s.txt" dir (bytes2string bytes.[1..])))
+let hashReadZip repo hash =
+    hashZipPath hash
+    |> UPath.openReadZip repo
 
+// zip内のentrynameを返す
+let hashEntryName (Hash bytes) = 
+    sprintf "%s.txt" (bytes2string bytes.[1..])
 
+// zip内のZipEntryを返す
+let hashEntry (zipfile:ZipArchive) hash =
+    let entryname = hashEntryName hash
+    let ents = zipfile.Entries |> Seq.filter (fun ent->ent.Name = entryname) |> Seq.toList
+    match ents with
+    | [x] -> Some x
+    | _ -> None
     
+let readlines (ent:ZipArchiveEntry) =
+    use stream = ent.Open()
+    use sr = new StreamReader(stream)
+    let lineSeq = seq { while true do yield sr.ReadLine() }
+    lineSeq 
+    |> Seq.takeWhile (fun line -> line <> null) 
+    |> Seq.toList // do read before sr close.
+
+let writetext (ent:ZipArchiveEntry) (text:string) =
+    use stream = ent.Open()
+    use sw = new StreamWriter(stream)
+    sw.Write text
+
+let copyent (src:ZipArchiveEntry) (dest:ZipArchiveEntry) =
+    use srcst = src.Open()
+    use sr = new StreamReader(srcst)
+    use destst = dest.Open()
+    use sw = new StreamWriter(destst)
+    sw.Write(sr.ReadToEnd())
+
+let isEmptyZip (zipfi:FileInfo) =
+    use zipfile = ZipFile.Open(zipfi.FullName, ZipArchiveMode.Read)
+    zipfile.Entries |> Seq.isEmpty
+
+let removeEntry (zipfi:FileInfo) (entname:string) =
+    (
+        use org = ZipFile.Open(zipfi.FullName, ZipArchiveMode.Read)
+        use tmp = ZipFile.Open("uit_tmp.zip", ZipArchiveMode.Create)
+        org.Entries
+        |> Seq.filter (fun ent-> ent.Name <> entname)
+        |> Seq.iter(fun ent ->
+                let newent = tmp.CreateEntry ent.Name
+                copyent ent newent
+        )
+    )
+    File.Move("uit_tmp.zip", zipfi.FullName, true)
+
+let saveTextZipUpdate (zipfi:FileInfo) (entname:string) (text:string) =
+    (
+    use org = ZipFile.Open(zipfi.FullName, ZipArchiveMode.Read)
+    use tmp = ZipFile.Open("uit_tmp.zip", ZipArchiveMode.Create)
+    let replaced = 
+        org.Entries
+        |> Seq.filter (fun ent->
+            if ent.Name = entname then
+                let newent = tmp.CreateEntry entname
+                writetext newent text
+                true
+            else
+                let newent = tmp.CreateEntry ent.Name
+                copyent ent newent
+                false
+            )
+        |> Seq.tryHead
+    match replaced with
+    | None -> 
+        // エントリが無かったので新規に追加
+        let newent = tmp.CreateEntry entname
+        writetext newent text
+    | _ -> ()
+    )
+    File.Move("uit_tmp.zip", zipfi.FullName, true)
+
+let saveTextZipNew (zipfi:FileInfo) (entname:string) (text:string) =
+    use dest = ZipFile.Open(zipfi.FullName, ZipArchiveMode.Create)
+    let newent = dest.CreateEntry entname
+    writetext newent text
+
+let saveTextZip (zipfi:FileInfo) entname text =
+    ensureDir zipfi.Directory
+    if zipfi.Exists then
+        saveTextZipUpdate zipfi entname text
+    else
+        saveTextZipNew zipfi entname text
+    
+let listZipEntryName (fi:FileInfo) =
+    use zip = ZipFile.Open(fi.FullName, ZipArchiveMode.Read)
+    zip.Entries
+    |> Seq.map (fun ent->ent.Name)
+    |> Seq.toList
 
 let saveText :SaveText = fun fi text ->
     ensureDir fi.Directory

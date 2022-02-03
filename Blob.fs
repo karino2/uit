@@ -25,26 +25,29 @@ type BlobInfo =
 
 module Blob =
     let fromHash repo hash =
-        let dir = hashPath hash
-        let fi = UPath.toFileInfo repo dir
         let toIoR (line: string) =
             let cells = line.Split('\t', 4)
             let tp = parseFileType cells.[0]
             {Path=(UPath.fromUit cells.[3]); Entry={Type = tp; LastModified=DateTime(Int64.Parse cells.[1]); EntryDate=DateTime(Int64.Parse cells.[2])}}
-        if fi.Exists then
-            let onlyIorR icase rcase =
-                fun (m:PathEntry) ->
-                    match m.Entry.Type with
-                    |Instance _-> icase
-                    |Link _ -> rcase
-            let ret = 
-                File.ReadLines fi.FullName
-                |> Seq.map toIoR
-            let is = ret |> Seq.filter (onlyIorR true false) |> Seq.toList
-            let rs = ret |> Seq.filter (onlyIorR false true) |> Seq.toList
-            ManagedBlob { Hash = hash; InstancePathList=is; LinkPathList=rs }
-        else
-            UnmanagedBlob
+        let onlyIorR icase rcase =
+            fun (m:PathEntry) ->
+                match m.Entry.Type with
+                |Instance _-> icase
+                |Link _ -> rcase
+            
+        match hashReadZip repo hash with
+        | Some zipfile_ ->
+            use zipfile = zipfile_
+            match hashEntry zipfile hash with
+            | Some ent ->
+                let ret = 
+                    readlines ent
+                    |> Seq.map toIoR
+                let is = ret |> Seq.filter (onlyIorR true false) |> Seq.toList
+                let rs = ret |> Seq.filter (onlyIorR false true) |> Seq.toList
+                ManagedBlob { Hash = hash; InstancePathList=is; LinkPathList=rs }
+            | None -> UnmanagedBlob
+        | None -> UnmanagedBlob
 
     /// 必ず存在する事が保証されてるケース。ManagedBlobを返す
     let fromHashMB repo hash =
@@ -61,16 +64,18 @@ module Blob =
         List.append instances links |> List.reduce (+)
     
     let save repo mb =
-        let dest = hashPath mb.Hash
-        saveText (UPath.toFileInfo repo dest) (toText mb)
+        let zipfi = hashZipFI repo mb.Hash
+        let entname  = hashEntryName mb.Hash
+        toText mb
+        |> saveTextZip zipfi entname
 
     let removeByHash repo hash =
-        let dest = hashPath hash
-        justDeleteFile repo dest
-        let dir = UDir.toDI repo (parentDir dest)
-        let files = listFiles dir |> List.toArray
-        if files.Length = 0 then
-            dir.Delete()
+        let zipfi = hashZipFI repo hash
+        hashEntryName hash
+        |> removeEntry zipfi 
+
+        if isEmptyZip zipfi then
+            zipfi.Delete()
     
     let instances bi =
         match bi with
@@ -93,17 +98,20 @@ let hashRootStr (repo:Repo) =
 
 let removeTxtExt (name:string) = trimEnd ".txt" name
 
+let removeZipExt (name:string) = trimEnd ".zip" name
+
 let listHash repo =
-    let dir2hash (di:DirectoryInfo) =        
-        let bs = di.Name
-        listFiles di
-        |> List.filter (fun fi->fi.Name.EndsWith(".txt"))
-        |> List.map (fun fi->(removeTxtExt fi.Name))
+    let zip2hash (fi:FileInfo) =        
+        let bs = removeZipExt fi.Name
+        listZipEntryName fi
+        |> List.filter (fun entname->entname.EndsWith(".txt"))
+        |> List.map (fun entname->(removeTxtExt entname))
         |> List.map (fun rest-> bs+rest)
         |> List.map (string2bytes >> Hash)
 
-    DirectoryInfo(hashRootStr(repo)).EnumerateDirectories()
-    |> Seq.map dir2hash
+    DirectoryInfo(hashRootStr(repo)).EnumerateFiles()
+    |> Seq.filter (fun ent->ent.Name.EndsWith ".zip")
+    |> Seq.map zip2hash
     |> Seq.concat
     |> Seq.toList
 
@@ -122,15 +130,16 @@ let listHashWith repo (hashstr:string) =
     if hashstr.Length < 2 then
         []
     else
-        let dirname = hashstr.[0..1]
+        let top2 = hashstr.[0..1]
+        let zipname = sprintf "%s.zip" top2
         let dirRoot = hashRootStr repo
-        let dir = DirectoryInfo(Path.Combine(dirRoot, dirname))
-        if not dir.Exists then
+        let zipfi = FileInfo(Path.Combine(dirRoot, zipname))
+        if not zipfi.Exists then
             []
         else
-            listFiles dir
-            |> List.filter (fun fi -> fi.Name.StartsWith(hashstr.[2..]))
-            |> List.map (fun fi-> dirname + (removeTxtExt fi.Name))
+            listZipEntryName zipfi
+            |> List.filter (fun entname -> entname.StartsWith(hashstr.[2..]))
+            |> List.map (fun entname-> top2 + (removeTxtExt entname))
             |> List.map (string2bytes >> Hash)
 
 

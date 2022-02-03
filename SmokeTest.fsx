@@ -205,3 +205,11 @@ Ingest.ingest repo childdir
 // folder2/folder3/another_test1.txt
 listMB repo |> List.length |> should 3
 listDupMB repo |> List.length |> should 1
+
+
+//
+// listHashWithのテスト
+//
+
+// test1のハッシュ
+listHashWith repo "3057" |> List.length |> should 1
