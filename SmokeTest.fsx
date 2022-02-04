@@ -20,7 +20,7 @@ let d = UDir.fromUit
 
 // fsharplint:disable Hints
 
-let repo = { Path = DirectoryInfo "./testdata_work" }
+let repo = DirectoryInfo "./testdata_work" |> repoAt
 
 shellExecute "setuptest.sh" ""
 initRecursive repo
@@ -191,7 +191,7 @@ shellExecute "setuptest.sh" ""
 
 init repo
 
-let repoChild = { Path = DirectoryInfo "./testdata_work/folder2" }
+let repoChild = DirectoryInfo "./testdata_work/folder2" |> repoAt
 let childdir = (d "folder2")
 
 initRecursive repoChild

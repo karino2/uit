@@ -181,7 +181,7 @@ module Ingest =
         if not (dotUitExist childDI) then
             sprintf "child directory does not contains .uit: %s \n" childDI.FullName
             |> failwith 
-        let childRepo = { Path = childDI }
+        let childRepo = repoAt childDI
         processMB repo childdir childRepo
         processFI repo childdir childRepo
         deleteDotUit childRepo

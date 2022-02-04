@@ -21,7 +21,7 @@ let u = UPath.fromUit
 let ud = UDir.fromUit
 // fsharplint:disable Hints
 
-let repo = { Path = DirectoryInfo "./testdata_work" }
+let repo = DirectoryInfo "./testdata_work" |> repoAt
 
 shellExecute "setuptest.sh" ""
 
@@ -34,7 +34,7 @@ initRecursiveWithLogger repo (fun str -> printf "%s" str)
 // childが必要な類のテスト
 //
 
-let repoChild = { Path = DirectoryInfo "./testdata_work/folder2" }
+let repoChild = DirectoryInfo "./testdata_work/folder2" |> repoAt
 
 // dotUitExistのテスト
 
@@ -162,7 +162,7 @@ Seq.toList( di.Parent.EnumerateDirectories(".uit") ) = []
 
 
 init repo
-initRecursive { Path = DirectoryInfo "./testdata_work/folder2" }
+initRecursive (repoAt (DirectoryInfo "./testdata_work/folder2"))
 
 
 findTopUitDir di.Parent

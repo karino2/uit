@@ -33,5 +33,5 @@ let findCurrentUitDir (startDI: DirectoryInfo) =
 let currentRepo () =
     let diopt = findCurrentUitDir (DirectoryInfo ".")
     match diopt with
-    | (Some di) -> {Path = di}
+    | (Some di) -> repoAt di
     | None -> failwith("No .uit directory found.")

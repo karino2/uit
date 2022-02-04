@@ -138,7 +138,7 @@ let main argv =
             let isrec = initarg.Contains Recursive
             let isempty = initarg.Contains Empty
             let silent = (initarg.Contains InitArgs.Silent)
-            let repo = {Path = DirectoryInfo "." }
+            let repo = DirectoryInfo "." |> repoAt
 
             if isempty then
                 initEmpty repo
@@ -152,7 +152,7 @@ let main argv =
             let atarg = results.GetResult(InitAt)
             let target = atarg.GetResult(InitAtArgs.Path) |> trimEnd "/"
             let logger = getLogger (atarg.Contains InitAtArgs.Silent)
-            let repo = {Path = DirectoryInfo target }
+            let repo = DirectoryInfo target |> repoAt
             sprintf "InitAt: %s\n" target |> logger
             initRecursiveWithLogger repo logger
             0
