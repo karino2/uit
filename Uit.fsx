@@ -26,7 +26,82 @@ let repo = DirectoryInfo "./testdata_work" |> repoAt
 shellExecute "setuptest.sh" ""
 
 
+//
+// cacheの開発
+//
+
+
+// no .uit, no cache
+DirectoryInfo "./testdata_work" |> repoAt |> DirCache.cacheRepo
+
+
+// .uit with no .uit/cache, no cache.
+initRecursive repo
+DirectoryInfo "./testdata_work" |> repoAt |> DirCache.cacheRepo
+
+
+// .uit with .uit/cache, cache
+
+let setupcache () =
+    shellExecute "mkdir" "./testdata_work/.uit/cache" |> printfn "%s"
+    shellExecute "mkdir" "./testdata_work/.uit/cache/.uit" |> printfn "%s"
+    shellExecute "mv" "./testdata_work/.uit/hash ./testdata_work/.uit/cache/.uit/" |> printfn "%s"
+    shellExecute "mv" "./testdata_work/.uit/dirs ./testdata_work/.uit/cache/.uit/" |> printfn "%s"
+
+
+setupcache ()
+
+DirectoryInfo "./testdata_work" |> repoAt |> DirCache.cacheRepo
+
+
+
+// create .uit/cache with folder2 cache.
+
+shellExecute "setuptest.sh" ""
+
+initEmpty repo
+
+let folder2FI = DirectoryInfo "./testdata_work/folder2"
+repoAt folder2FI |> initRecursive
+
+Ingest.ingest repo (UDir.fromDI repo folder2FI)
+setupcache ()
+
+
+// .uit/cacheがある状態で作り直し。repoは古い状態でinitされてるのでobsoleteの可能性がある…
+let repowc = DirectoryInfo "./testdata_work" |> repoAt
+
+DirCache.cacheRepo repowc
+
+
+
+DirCache.fromRepo repowc (ud "folder2")
+DirCache.fromRepo repowc (ud "folder1")
+
+let dircache = DirCache.fromRepo repowc (ud "folder2")
+
+dircache.Value
+
+
+
+let fi = FileInfo "testdata_work/folder2/test2.txt"
+fi.LastWriteTime
+
+DirCache.findCacheFromDict dircache.Value "test2.txt" fi.LastWriteTime
+DirCache.findCacheFromDict dircache.Value "test2.txt" (fi.LastWriteTime.AddDays 1.0)
+
+
+fi.Name
+
+DirCache.find dircache fi
+
+DirCache.find None fi
+
+
+
+
 // loggerのテスト
+shellExecute "setuptest.sh" ""
 
 initRecursiveWithLogger repo (fun str -> printf "%s" str)
 

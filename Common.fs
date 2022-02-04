@@ -7,10 +7,19 @@ open System.IO.Compression
 type Hash = Hash of byte array
 
 // このPathは最後のスラッシュは含まない
-type Repo = { Path: DirectoryInfo }
+type Repo = { Path: DirectoryInfo; Cache: DirectoryInfo option }
 
-let repoAt di =
-    { Path = di }
+
+/// repoのfactoryメソッド
+/// .uit/cacheがあればそれをキャッシュとみなす
+let repoAt (di:DirectoryInfo) =
+    let cacheDI =
+        Path.Combine( di.FullName, ".uit", "cache" )
+        |> DirectoryInfo
+    if cacheDI.Exists then
+        { Path = di; Cache = Some cacheDI }
+    else
+        { Path = di; Cache = None }
 
 let deleteDotUit (repo:Repo) =
     Directory.Delete(Path.Combine(repo.Path.FullName, ".uit") ,true)
@@ -358,3 +367,4 @@ let listFiles (di:DirectoryInfo) =
     di.EnumerateFiles()
     |> Seq.filter (fun fi-> fi.Name <> ".DS_Store")
     |> Seq.toList
+

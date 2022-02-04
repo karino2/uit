@@ -32,18 +32,14 @@ module FInfo =
         match finfo.Entry.Type with
         | Instance -> format 1 finfo
         | Link -> format 2 finfo
-    
+
+
 /// DInfoT はFInfo list。今のところわざわざ型を定義しなくても良いかと思いFInfo listをそのまま使っている。
 module DInfo =
     let toText finfos =
         finfos
         |> List.map FInfo.toText
         |> String.concat "\n"
-
-    let computeFrom repo udir =
-        let di = UDir.toDI repo udir
-        listFiles di
-        |> List.map FInfo.computeFrom
 
     let dirRootStr (repo:Repo) =
         Path.Combine( repo.Path.FullName, ".uit", "dirs")
@@ -113,9 +109,17 @@ module DInfo =
         toText fis
         |> saveText dirfi
 
+
+    // fi2finfoはキャッシュを考えなければ FInfo.computeFrom
+    let computeFrom fi2finfo repo udir  =
+        let di = UDir.toDI repo udir
+        listFiles di
+        |> List.map fi2finfo
+
     // FInfoのリストを求めてそれを保存
-    let computeAndSave repo udir=
-        let fis = computeFrom repo udir
+    // fi2finfoはキャッシュを考えなければ FInfo.computeFrom
+    let computeAndSave fi2finfo repo udir =
+        let fis = computeFrom fi2finfo repo udir
         save repo udir fis
         fis
 
@@ -154,5 +158,3 @@ module DInfo =
             |> List.filter (fun finfo-> finfo.FName <> fname)
         save repo udir newFis
         newFis
-
-

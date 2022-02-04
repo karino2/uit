@@ -19,6 +19,47 @@ type UniqIt = Repo -> ManagedBlob -> ManagedBlob
 type ConvDirInstance = Repo -> UDir.T -> FInfoT list
 
 
+/// キャッシュ関連。
+/// repoのCacheにDirectoryInfoがあれば、そのDirectoryInfoの.uitディレクトリをキャッシュの元として使う。
+/// 現時点ではキャッシュはファイルパスとLastModifiedが一致したらマッチしたとみなし、ハッシュは計算せずにキャッシュの値を使う。
+/// CacheのDirectoryInfo自体はDirCacheとしてはどこであっても構わないが、repoAtでは.uit/cacheにあると仮定している。
+/// 
+/// このモジュールは置き場が良く分からなかったのでここに置く。
+module DirCache =
+    type T = System.Collections.Generic.IDictionary<string, FInfoT>
+
+    let findCacheFromDict (cacheDict:T) fname lastModified =
+        match cacheDict.TryGetValue fname with
+        | true, finfo ->
+            if finfo.Entry.LastModified = lastModified then
+                Some finfo
+            else
+                None
+        | _ -> None
+
+    /// fiはdircacheの中のファイルと想定する
+    let find (dircache:T option) (fi:FileInfo) =
+        match dircache with
+        | Some dic -> findCacheFromDict dic fi.Name fi.LastWriteTime
+        | None -> None
+
+    let cacheRepo (repo:Repo) =
+        match repo with
+        | {Path=_; Cache= Some cacheDI} -> repoAt cacheDI |> Some
+        | _ -> None
+
+    let fromRepo repo udir =
+        match (cacheRepo repo) with
+        | (Some crepo) -> 
+            let pairs = DInfo.ls crepo udir
+                        |> List.map (fun finf -> (finf.FName, finf))
+            if pairs.IsEmpty then
+                None
+            else
+                pairs |> dict |> Some
+        | _ -> None
+
+
 
 //
 // 実装
@@ -59,11 +100,21 @@ let initEmpty repo =
     |> ensureDir
 
 
-// Repo下のファイルの.uit/hash と .uit/dirsを作る。
-// まだhashなどが存在しない状態で行われるのでImportとは処理を分けておく
-// .uit/dirsを作る都合でファイル単位じゃなくてディレクトリ単位
+/// Repo下のファイルの.uit/hash と .uit/dirsを作る。
+/// まだhashなどが存在しない状態で行われるのでImportとは処理を分けておく
+/// .uit/dirsを作る都合でファイル単位じゃなくてディレクトリ単位
+//
+/// repoにCacheのDirectoryInfoがあれば、FInfoの計算にはマッチしたらそれを使う
+/// Cacheの構造はDirCacheモジュール側で決める
+/// 
 let initOneDir repo udir =
-    let fis = DInfo.computeAndSave repo udir
+    let dircache = DirCache.fromRepo repo udir
+    let fi2finfo dircache fi =
+        match DirCache.find dircache fi with
+        | Some finfo -> finfo
+        | None -> FInfo.computeFrom fi       
+
+    let fis = DInfo.computeAndSave (fi2finfo dircache) repo udir
     fis
     |> List.map (finfo2mb repo udir)
     |> List.iter (Blob.save repo)
