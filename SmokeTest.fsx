@@ -217,3 +217,37 @@ listDupMB repo |> List.length |> should 1
 
 // test1のハッシュ
 listHashWith repo "3057" |> List.length |> should 1
+
+
+//
+// キャッシュのテスト
+//
+
+let setupcache () =
+    shellExecute "mkdir" "./testdata_work/.uit/cache" |> printfn "%s"
+    shellExecute "mkdir" "./testdata_work/.uit/cache/.uit" |> printfn "%s"
+    shellExecute "mv" "./testdata_work/.uit/hash ./testdata_work/.uit/cache/.uit/" |> printfn "%s"
+    shellExecute "mv" "./testdata_work/.uit/dirs ./testdata_work/.uit/cache/.uit/" |> printfn "%s"
+
+shellExecute "setuptest.sh" ""
+
+initRecursive repo
+
+let unimb_cache = lsmb repo (u "test1.txt")
+uniqIt repo unimb_cache
+
+// test1.txt.uitlnkになっている
+DInfo.findFInfo repo (u "test1.txt")
+|> (fun f->f.Value.Entry.Type ) |> should Link
+
+setupcache ()
+shellExecute "rm" "./testdata_work/test1.txt.uitlnk"
+// test1.txtのタイムスタンプを元に戻すべくコピー元からコピー
+shellExecute "cp" "-p ./testdata/init/test1.txt ./testdata_work/test1.txt"
+
+let repowc = DirectoryInfo "./testdata_work" |> repoAt
+let dircache = DirCache.fromRepo repowc (d "")
+let fi = FileInfo "testdata_work/test1.txt"
+
+DirCache.find dircache fi
+|> shouldSome

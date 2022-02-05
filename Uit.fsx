@@ -21,9 +21,9 @@ let u = UPath.fromUit
 let ud = UDir.fromUit
 // fsharplint:disable Hints
 
+shellExecute "setuptest.sh" ""
 let repo = DirectoryInfo "./testdata_work" |> repoAt
 
-shellExecute "setuptest.sh" ""
 
 
 //
@@ -97,8 +97,44 @@ DirCache.find dircache fi
 
 DirCache.find None fi
 
+// link pathのケースのテスト
+
+shellExecute "setuptest.sh" ""
+initRecursive repo
+
+let unimb = lsmb repo (u "test1.txt")
+uniqIt repo unimb
 
 
+lsmb repo (u "test1.txt")
+// test1.txt.uitlnkになっている
+
+DInfo.ls repo (ud "")
+|> List.head
+|> FInfo.resolveName
+
+setupcache ()
+shellExecute "rm" "./testdata_work/test1.txt.uitlnk"
+// test1.txtのタイムスタンプを元に戻すべくコピー元からコピー
+shellExecute "cp" "-p ./testdata/init/test1.txt ./testdata_work/test1.txt"
+
+let repowc2 = DirectoryInfo "./testdata_work" |> repoAt
+
+let dircache = DirCache.fromRepo repowc2 (ud "")
+
+DInfo.ls (DirCache.cacheRepo repowc2).Value (ud "")
+|> List.map (fun finf -> ((FInfo.resolveName finf), finf))
+|> dict
+
+let fi = FileInfo "testdata_work/test1.txt"
+
+
+dircache
+fi.LastWriteTime
+
+DirCache.find dircache fi
+
+(FileInfo "testdata_work/folder1/test1.txt").LastWriteTime
 
 // loggerのテスト
 shellExecute "setuptest.sh" ""

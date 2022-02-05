@@ -52,7 +52,7 @@ module DirCache =
         match (cacheRepo repo) with
         | (Some crepo) -> 
             let pairs = DInfo.ls crepo udir
-                        |> List.map (fun finf -> (finf.FName, finf))
+                        |> List.map (fun finf -> ((FInfo.resolveName finf), finf))
             if pairs.IsEmpty then
                 None
             else

@@ -33,6 +33,12 @@ module FInfo =
         | Instance -> format 1 finfo
         | Link -> format 2 finfo
 
+    /// linkの時は.uitlinkを取り除いた名前を返す
+    let resolveName finfo =
+        match finfo.Entry.Type with
+        | Instance -> finfo.FName
+        | Link -> trimEnd LinkExt finfo.FName
+
 
 /// DInfoT はFInfo list。今のところわざわざ型を定義しなくても良いかと思いFInfo listをそのまま使っている。
 module DInfo =
