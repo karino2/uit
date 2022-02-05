@@ -11,15 +11,23 @@ type Repo = { Path: DirectoryInfo; Cache: DirectoryInfo option }
 
 
 /// repoのfactoryメソッド
-/// .uit/cacheがあればそれをキャッシュとみなす
 let repoAt (di:DirectoryInfo) =
-    let cacheDI =
-        Path.Combine( di.FullName, ".uit", "cache" )
-        |> DirectoryInfo
-    if cacheDI.Exists then
+    { Path = di; Cache = None }
+
+/// repoのfactoryメソッド with Cache.
+/// .uit/cachepath.txtがあればその中のpathをCacheのDirectoryInfoとして使う。
+let repoAtWC (di:DirectoryInfo) =
+    let cacheFI =
+        Path.Combine( di.FullName, ".uit", "cachepath.txt" )
+        |> FileInfo
+    if cacheFI.Exists then
+        let cacheDI = File.ReadAllLines(cacheFI.FullName)
+                        |> Array.head
+                        |> DirectoryInfo
         { Path = di; Cache = Some cacheDI }
     else
         { Path = di; Cache = None }
+
 
 let deleteDotUit (repo:Repo) =
     Directory.Delete(Path.Combine(repo.Path.FullName, ".uit") ,true)

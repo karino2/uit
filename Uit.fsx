@@ -21,8 +21,8 @@ let u = UPath.fromUit
 let ud = UDir.fromUit
 // fsharplint:disable Hints
 
-shellExecute "setuptest.sh" ""
 let repo = DirectoryInfo "./testdata_work" |> repoAt
+shellExecute "setuptest.sh" ""
 
 
 
@@ -32,12 +32,12 @@ let repo = DirectoryInfo "./testdata_work" |> repoAt
 
 
 // no .uit, no cache
-DirectoryInfo "./testdata_work" |> repoAt |> DirCache.cacheRepo
+DirectoryInfo "./testdata_work" |> repoAtWC |> DirCache.cacheRepo
 
 
 // .uit with no .uit/cache, no cache.
 initRecursive repo
-DirectoryInfo "./testdata_work" |> repoAt |> DirCache.cacheRepo
+DirectoryInfo "./testdata_work" |> repoAtWC |> DirCache.cacheRepo
 
 
 // .uit with .uit/cache, cache
@@ -47,11 +47,12 @@ let setupcache () =
     shellExecute "mkdir" "./testdata_work/.uit/cache/.uit" |> printfn "%s"
     shellExecute "mv" "./testdata_work/.uit/hash ./testdata_work/.uit/cache/.uit/" |> printfn "%s"
     shellExecute "mv" "./testdata_work/.uit/dirs ./testdata_work/.uit/cache/.uit/" |> printfn "%s"
+    File.WriteAllText("./testdata_work/.uit/cachepath.txt", (DirectoryInfo "./testdata_work/.uit/cache").FullName)
 
 
 setupcache ()
 
-DirectoryInfo "./testdata_work" |> repoAt |> DirCache.cacheRepo
+DirectoryInfo "./testdata_work" |> repoAtWC |> DirCache.cacheRepo
 
 
 
@@ -69,7 +70,7 @@ setupcache ()
 
 
 // .uit/cacheがある状態で作り直し。repoは古い状態でinitされてるのでobsoleteの可能性がある…
-let repowc = DirectoryInfo "./testdata_work" |> repoAt
+let repowc = DirectoryInfo "./testdata_work" |> repoAtWC
 
 DirCache.cacheRepo repowc
 
@@ -106,6 +107,7 @@ let unimb = lsmb repo (u "test1.txt")
 uniqIt repo unimb
 
 
+DInfo.findFInfo repo (u "test1.txt") |> (fun f->f.Value.Entry.Type )
 lsmb repo (u "test1.txt")
 // test1.txt.uitlnkになっている
 
@@ -118,7 +120,7 @@ shellExecute "rm" "./testdata_work/test1.txt.uitlnk"
 // test1.txtのタイムスタンプを元に戻すべくコピー元からコピー
 shellExecute "cp" "-p ./testdata/init/test1.txt ./testdata_work/test1.txt"
 
-let repowc2 = DirectoryInfo "./testdata_work" |> repoAt
+let repowc2 = DirectoryInfo "./testdata_work" |> repoAtWC
 
 let dircache = DirCache.fromRepo repowc2 (ud "")
 
