@@ -251,7 +251,7 @@ module LinkInstance =
 
     // 指定されたUPathをRefeerenceに。最後の一つをlinkにしようとする時はエラー。
     let toLinkOne repo mb upath =
-        let (founds, filtered) = Blob.findInstance mb upath
+        let (founds, filtered) = Blob.partitionInstance mb upath
         match founds, filtered with
         | [found], _::_ ->
             let parent = parentDir upath
@@ -262,7 +262,7 @@ module LinkInstance =
             match thisfinfos with
             |[thisfi] -> 
                 let newpath = changeToLinkFileRaw repo upath
-                let newpe, newfi = createEntries thisfi.Entry.Type thisfi.Entry.LastModified newpath thisfi.Hash
+                let newpe, newfi = createEntries Link thisfi.Entry.LastModified newpath thisfi.Hash
                 let newfinfos = newfi::other
                 DInfo.save repo parent newfinfos
                 let newMf = 
@@ -309,7 +309,7 @@ let uniqIt : UniqIt = fun repo mb ->
 
 let toInstance : ToInstance = fun repo mb target ->
     // hoge.uitlnk を渡すと、hoge.uitlnk.uitlnkにもマッチしちゃうが、まぁいいでしょう。
-    let founds, rest = Blob.findLink mb target
+    let founds, rest = Blob.partitionLink mb target
     match founds with
     |[found] ->
         let headInst = mb.InstancePathList.Head
@@ -396,8 +396,8 @@ module Remove =
             afterRemove newMb upath
             newMb
 
-        let insFounds, insRest = Blob.findInstance mb upath
-        let lnkFounds, lnkRest = Blob.findLink mb upath
+        let insFounds, insRest = Blob.partitionInstance mb upath
+        let lnkFounds, lnkRest = Blob.partitionLink mb upath
         
         match insFounds, lnkFounds, insRest, lnkRest with
         | [_], [], [], [] -> moveToTrash mb upath
@@ -415,7 +415,7 @@ module Remove =
 
             // リンクになったupathファイルを削除
             let inputLnk = toLinkPath upath
-            let lnkFound2, lnkRest2 = Blob.findLink mb2 inputLnk
+            let lnkFound2, lnkRest2 = Blob.partitionLink mb2 inputLnk
             // lnkFounds2は必ず [inputLnk]
             justDeleteFile repo lnkFound2.Head.Path
 

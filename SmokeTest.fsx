@@ -50,6 +50,10 @@ linkLen unimb |> should 2
 unimb.InstancePathList.Head.Path |> should (u "folder1/test1.txt")
 unimb.LinkPathList.Head.Path |> should (u "test1.txt.uitlnk")
 
+DInfo.ls repo (d "")
+|> List.map (fun ent->ent.Entry.Type)
+|> List.head |> should Link
+
 toInstance repo unimb (u "test1.txt.uitlnk")
 
 let unimb2 = lsmb repo (u "test1.txt")

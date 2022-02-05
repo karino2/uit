@@ -87,10 +87,10 @@ module Blob =
         | ManagedBlob mb-> mb.LinkPathList
         | UnmanagedBlob ->[]
 
-    let findInstance mb upath =
+    let partitionInstance mb upath =
         mb.InstancePathList |> List.partition  (fun x->x.Path = upath)
 
-    let findLink mb upath =
+    let partitionLink mb upath =
         mb.LinkPathList |> List.partition (peEqual upath)
 
 let hashRootStr (repo:Repo) =
